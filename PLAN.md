@@ -25,14 +25,23 @@
 - 产出：**支持矩阵**（按 app/控件类型/版本），决定产品承诺范围。
 - 分发决策：Developer ID 签名 + 公证（站外分发必须）。
 
-### M1 — 快捷键 + 显式选区改写写回（价值兑现）
-- 读选中文字（无选区则不动作——不做"猜全框"）。
+### M1 — 浮层入口 + 快捷键 + 选区改写写回（价值兑现）
+- **浮层小圆点是主入口**：在聚焦输入框旁出现、点击即优化。没有它工具难用，所以从 M3 提前进 MVP；快捷键作为等价备用入口一起做。
+- **两种触发模式都支持**（做在同一个写回核心上）：
+  - **有选区**：改选中文字，替换选区；
+  - **无选区**：改整框内容，整体写回（写回前复核，覆盖范围更大，防误写要求更严）。
 - LLM 走 OpenAI 兼容协议：配置 base URL + API key + model（Keychain 存 key）；失败不自动切换到别的服务。
 - 写回状态机：idle → reading → requesting → validating → writing → verified/failed；每目标单请求、丢弃旧响应；写回前复核 PID+元素+原文+选区；空输出/截断/拒绝不替换。
 - 预览/差异 + 撤销（原文保留到确认为止）。
 - 剪贴板兜底（如需）：保存多 item 多类型、比较 changeCount、延迟恢复。
 - 排除清单：Terminal、密码框、Secure Input 状态下停止。
 - 验收：支持矩阵内 app 全过；验收重点是**没有误写**，不是 API 返回成功。
+- **浮层实现要点**（进 M1，原 M3 内容）：
+  - NSPanel + nonactivatingPanel + **becomesKeyOnlyIfNeeded=true**（否则点击会抢键盘焦点）；canBecomeKey=false（纯点击按钮）。
+  - AXObserver 按 PID 建立（system-wide 对象不支持通知）；NSWorkspace 监听前台切换；AXUIElementSetMessagingTimeout 防卡死。
+  - 坐标：AX 全局坐标（原点在菜单栏屏左上）→ AppKit 转换，锚点 NSScreen.screens[0]；多屏/负坐标/缩放。
+  - 全屏可见性：collectionBehavior + level 逐版本测试，不承诺"永远最前"。
+  - 只对支持矩阵内的目标显示。
 
 ### M2 — 风格学习 + 融入
 - 设置页：手动粘贴 Slack 消息 → LLM 提炼结构化风格（可编辑，区分中/英、同事/客户）→ 预览确认。
@@ -40,14 +49,7 @@
 - 用保留样本对比"通用改写 vs 个性化改写"，盲评。
 - 隐私：样本不出机器（本地模型）；若用远程须明示。
 
-### M3 — 浮层按钮
-- NSPanel + nonactivatingPanel + **becomesKeyOnlyIfNeeded=true**（否则点击会抢键盘焦点）；canBecomeKey=false（纯点击按钮）。
-- AXObserver 按 PID 建立（system-wide 对象不支持通知）；NSWorkspace 监听前台切换；AXUIElementSetMessagingTimeout 防卡死。
-- 坐标：AX 全局坐标（原点在菜单栏屏左上）→ AppKit 转换，锚点 NSScreen.screens[0]；多屏/负坐标/缩放。
-- 全屏可见性：collectionBehavior + level 逐版本测试，不承诺"永远最前"。
-- 只对支持矩阵内的目标显示。
-
-### M4 — 兼容扩展 + 发布
+### M3 — 兼容扩展 + 发布
 - 矩阵外 app 适配、Windows 壳（UI Automation，独立工作流）。
 - 签名公证、最低 macOS 版本、崩溃/日志本地化（不上传原文）。
 - 自动 Slack 抓取、多模板、本地/远程自动切换、历史库——继续后置。
