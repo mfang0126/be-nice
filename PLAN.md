@@ -1,7 +1,12 @@
-# be-nice — 实施计划 v2（重排版）
+# be-nice — 实施计划 v3（MVP 收敛版）
 
-> 原计划：`mac-text-optimizer-plan.md`（2026-10-23）。本版根据两轮独立评审（技术风险 + AX/NSPanel 实证）与本地小模型调研重排。
+> 原计划：`mac-text-optimizer-plan.md`（2026-10-23）。v2 根据两轮独立评审重排；v3 把模型层改为 OpenAI 兼容协议，本地模型降为 optional。
 > 原则不变：先能用，再好看；先有个人风格，再加模板；不 overkill。
+
+## v3 变更
+- **LLM 接入只认 OpenAI 兼容协议**（`/v1/chat/completions`）：base URL + API key + model 名三个配置项。任何 OpenAI 兼容服务（官方、中转、本地 Ollama/LM Studio/llama.cpp server）都能接——同一个协议，不需要 provider 特判。
+- **本地小模型（llama.cpp 嵌入、Qwen GGUF）整体后置为 optional**，不再是 MVP 依赖。`docs/research/review-3-local-model.md` 保留作未来本地档参考。
+- 附带收益：引擎层砍掉嵌入式推理、模型下载、GGUF/许可证分发问题，MVP 明显变小。
 
 ## 关键修订（相对原计划）
 
@@ -22,7 +27,7 @@
 
 ### M1 — 快捷键 + 显式选区改写写回（价值兑现）
 - 读选中文字（无选区则不动作——不做"猜全框"）。
-- 单一 LLM provider（本地 Qwen3-1.7B Q4_K_M，llama.cpp 嵌入，thinking 硬关闭）；失败不自动切远程。
+- LLM 走 OpenAI 兼容协议：配置 base URL + API key + model（Keychain 存 key）；失败不自动切换到别的服务。
 - 写回状态机：idle → reading → requesting → validating → writing → verified/failed；每目标单请求、丢弃旧响应；写回前复核 PID+元素+原文+选区；空输出/截断/拒绝不替换。
 - 预览/差异 + 撤销（原文保留到确认为止）。
 - 剪贴板兜底（如需）：保存多 item 多类型、比较 changeCount、延迟恢复。
@@ -47,13 +52,11 @@
 - 签名公证、最低 macOS 版本、崩溃/日志本地化（不上传原文）。
 - 自动 Slack 抓取、多模板、本地/远程自动切换、历史库——继续后置。
 
-## 本地模型选型（定案）
+## 模型接入（v3 定案）
 
-- **主选**：Qwen3-1.7B Q4_K_M（~1.1GB，Apache-2.0），llama.cpp 嵌入（Metal on Apple Silicon，CPU on Intel/Windows）。
-- **备选**：Qwen2.5-1.5B-Instruct（成熟、OpenRewrite-Eval 46.9）。
-- **质量档**：Qwen3-4B-Instruct-2507（Apache-2.0）。
-- **排除打包**：Qwen2.5-3B（Research License）；LM Studio（不可再分发）。
-- 待实测：8GB Intel Mac 与中端 Windows 的延迟（当前无公开数据，不作承诺）。
+- **协议**：OpenAI 兼容 `/v1/chat/completions`。配置三件套：base URL、API key（Keychain）、model 名。
+- 本地模型 optional：任何本地服务只要暴露 OpenAI 兼容端点（Ollama、LM Studio、llama.cpp server）即天然可用，无需专门开发。
+- 未来"嵌入式本地模型"（llama.cpp + Qwen GGUF）如需再启，调研结论见 `docs/research/review-3-local-model.md`。
 
 ## 验收矩阵（M0 产出，M1/M3 复用）
 
