@@ -15,8 +15,16 @@ struct StatusPillTests {
         let c = RewriteStatusController()
         var undone = 0, cancelled = 0
         c.show("已替换", target: field, undo: { undone += 1 }, cancel: nil)
-        expect(c.frame.minY >= field.maxY && c.frame.maxX == field.maxX, "pill sits above field, right-aligned: \(c.frame)")
-        expect(c.frame.height == 36, "single-line height 36")
+        expect(c.frame.minY == field.maxY + 6 && c.frame.minX == field.minX,
+               "pill sits on the button row, left-aligned with the field: \(c.frame)")
+        let button = TriggerGeometry.buttonFrame(field: field, within: NSScreen.screens.first { $0.frame.intersects(field) }?.visibleFrame ?? .zero)
+        expect(button.map { !$0.intersects(c.frame) } ?? true, "pill never covers the entry button when both fit")
+        expect(c.frame.height == 32, "single-line height matches the 32 pt button")
+        let narrow = TriggerGeometry.pillFrame(field: CGRect(x: 400, y: 300, width: 200, height: 60),
+                                               within: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                                               size: CGSize(width: 175, height: 32))
+        expect(narrow == CGRect(x: 425, y: 366, width: 175, height: 32),
+               "too narrow for both: pill takes the button's spot (got \(String(describing: narrow)))")
         expect(c.buttonTitles == ["撤销替换"], "replaced shows only 撤销替换: \(c.buttonTitles)")
         buttons(c.contentView!).first { $0.accessibilityLabel() == "撤销替换" }?.performClick(nil)
         expect(undone == 1, "undo callback fires")
@@ -40,9 +48,9 @@ struct StatusPillTests {
 
         // Width bounds.
         let short = RewriteStatusController.size(message: "好", buttons: ["收起"])
-        expect(short.width == 140 && short.height == 36, "min width: \(short)")
+        expect(short.width == 140 && short.height == 32, "min width: \(short)")
         let long = RewriteStatusController.size(message: String(repeating: "很长的错误信息", count: 20), buttons: ["收起"])
-        expect(long.width == 420 && long.height == 52, "max width, two lines: \(long)")
+        expect(long.width == 420 && long.height == 48, "max width, two lines: \(long)")
 
         print(failures == 0 ? "PASS" : "FAILED \(failures)")
         exit(failures == 0 ? 0 : 1)

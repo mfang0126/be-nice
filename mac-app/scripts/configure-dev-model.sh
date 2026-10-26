@@ -13,6 +13,7 @@ key=$(sed -n 's/^DEEPINFRA_API_KEY=//p' "$HOME/.hermes/.env" | tail -1 | tr -d '
 
 defaults write "$DOMAIN" be-nice.model.baseURL "$BASE_URL"
 defaults write "$DOMAIN" be-nice.model.id "$MODEL"
-# -U replaces the old item; -T lets the signed dev app read it without a prompt.
-security add-generic-password -U -s be-nice.model-api-key -a default -T "$APP" -w "$key"
+# Let the app itself create the item so it owns it (no per-read authorization).
+security delete-generic-password -s be-nice.model-api-key -a default >/dev/null 2>&1 || true
+printf '%s' "$key" | "$APP/Contents/MacOS/benice" --store-api-key
 echo "configured: $BASE_URL  model=$MODEL  key=(from ~/.hermes/.env)"

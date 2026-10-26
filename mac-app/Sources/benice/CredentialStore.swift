@@ -19,6 +19,11 @@ public enum CredentialStore {
         }
     }
 
+    /// Per-launch cache: macOS may ask the user to authorize each Keychain read,
+    /// so read once per app run. Save/delete keep it in sync.
+    nonisolated(unsafe) private static var cachedKey: String?
+    private static let cacheLock = NSLock()
+
     private static let service = "be-nice.model-api-key"
     private static let account = "default"
 
@@ -44,6 +49,7 @@ public enum CredentialStore {
             status = SecItemAdd(item as CFDictionary, nil)
         }
         guard status == errSecSuccess else { throw StoreError.keychain(status) }
+        cacheLock.withLock { cachedKey = trimmed }
     }
 
     /// Reports whether a key is stored without returning the secret data.
@@ -62,6 +68,7 @@ public enum CredentialStore {
 
     /// Returns the stored key, or `nil` when none is stored.
     public static func loadAPIKey() throws -> String? {
+        if let cached = cacheLock.withLock({ cachedKey }) { return cached }
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -75,11 +82,14 @@ public enum CredentialStore {
             return nil
         }
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        guard !trimmed.isEmpty else { return nil }
+        cacheLock.withLock { cachedKey = trimmed }
+        return trimmed
     }
 
     /// Removes the stored key. Does nothing when none is stored.
     public static func deleteAPIKey() throws {
+        cacheLock.withLock { cachedKey = nil }
         let status = SecItemDelete(baseQuery as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw StoreError.keychain(status)

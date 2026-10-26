@@ -14,6 +14,19 @@ struct BeNiceMain {
         if CommandLine.arguments.contains("--selftest") {
             exit(ShellSelfCheck.run())
         }
+        // Dev setup (scripts/configure-dev-model.sh): store the key read from stdin so
+        // the Keychain item belongs to this app and reads need no per-use authorization.
+        if CommandLine.arguments.contains("--store-api-key") {
+            let key = String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            do {
+                try CredentialStore.deleteAPIKey()
+                try CredentialStore.saveAPIKey(key)
+                exit(0)
+            } catch {
+                FileHandle.standardError.write(Data("store failed: \(error)\n".utf8))
+                exit(1)
+            }
+        }
 
         let app = NSApplication.shared
         let delegate = AppDelegate()

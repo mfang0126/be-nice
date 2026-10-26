@@ -5,7 +5,7 @@ import AppKit
 final class RewriteStatusController {
     enum Kind { case loading, success, error }
 
-    static let height: CGFloat = 36
+    static let height: CGFloat = 32  // same height as the Rewrite entry button
     static let minWidth: CGFloat = 140
     static let maxWidth: CGFloat = 420
     private static let pad: CGFloat = 14
@@ -21,7 +21,7 @@ final class RewriteStatusController {
     var frame: NSRect { panel.frame }
 
     init() {
-        panel.level = .floating
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)  // above the entry button
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.isOpaque = false
@@ -111,7 +111,7 @@ final class RewriteStatusController {
         let screen = NSScreen.screens.first { $0.frame.intersects(target) } ?? NSScreen.main
         if let bounds = screen?.visibleFrame {
             let placed = target.isEmpty ? nil
-                : TriggerGeometry.buttonFrame(field: target, within: bounds, size: size)
+                : TriggerGeometry.pillFrame(field: target, within: bounds, size: size)
             let f = placed ?? NSRect(x: bounds.maxX - size.width - 16, y: bounds.minY + 24,
                                      width: size.width, height: size.height)
             panel.setFrame(f, display: true)

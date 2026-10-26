@@ -154,6 +154,20 @@ enum TriggerGeometry {
         return nil
     }
 
+    /// Status pill: same row as the entry button but left-aligned with the field, so
+    /// both stay visible and clickable. Too narrow for both: take the button's spot
+    /// (the pill panel sits one level above the button and covers it).
+    static func pillFrame(field: CGRect, within bounds: CGRect, size: CGSize) -> CGRect? {
+        let gap: CGFloat = 6
+        let left = CGRect(x: field.minX, y: field.maxY + gap, width: size.width, height: size.height)
+        if let button = buttonFrame(field: field, within: bounds),
+           button.minY == field.maxY + gap,                      // button is in the row above
+           bounds.contains(left), left.maxX + gap <= button.minX {
+            return left
+        }
+        return buttonFrame(field: field, within: bounds, size: size)
+    }
+
     /// AX global coordinates have their origin at the top-left of the primary
     /// (menu bar) screen and grow downward. AppKit global coordinates have the
     /// origin at the bottom-left of that same screen and grow upward. Screens
