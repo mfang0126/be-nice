@@ -1,0 +1,46 @@
+{
+  "id": "ca575de0-b718-4f07-81b1-6603b80525d3",
+  "ok": true,
+  "result": {
+    "snapshot": {
+      "treeText": "App=com.github.Electron (pid 98962)\nWindow: \"be-nice AX test target\", App: Electron.\n\n0 standard window be-nice AX test target\n\t1 HTML content be-nice AX test target\n\t\t2 heading be-nice AX test target\n\t\t3 text 1. input[type=text]\n\t\t4 text field (settable), Value: be-nice M0 fixture: hello world.\n\t\t5 text 2. textarea\n\t\t6 text entry area (settable) be-nice M0 fixture: hello world.\n\t\t7 text 3. contenteditable (rich text)\n\t\t8 text entry area (settable) be-nice M0 fixture: hello world.\n\t\t\t9 text be-nice M0 fixture: hello world.\n\t10 close button\n\t11 full screen button, Secondary Actions: zoom the window\n\t12 minimise button\n\nNo UI element is currently focused.",
+      "focusedElementId": null,
+      "app": {
+        "name": "Electron",
+        "bundleId": "com.github.Electron",
+        "pid": 98962
+      },
+      "coordinateSpace": "window",
+      "window": {
+        "platform": {
+          "layer": 0
+        },
+        "width": 640,
+        "screenIndex": 0,
+        "y": 426,
+        "isMinimized": false,
+        "height": 480,
+        "id": 44213,
+        "x": 864,
+        "title": "be-nice AX test target",
+        "isOffscreen": false
+      },
+      "truncation": {
+        "maxDepth": 64,
+        "truncated": false,
+        "maxDepthReached": false,
+        "maxNodes": 1200
+      },
+      "id": "36C62604-4FB3-48BB-BEFA-20F9A3370EC2",
+      "elementCount": 13
+    },
+    "screenshotStatus": {
+      "state": "skipped",
+      "reason": "no_screenshot_flag"
+    },
+    "screenshot": null
+  },
+  "_meta": {
+    "runtimeId": "17bc33cf-d996-4e43-a11b-1ebcd1a47b56"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-23",
+  "app": "TextEdit 1.20 (415)",
+  "windowID": 44240,
+  "pid": 35240,
+  "evidenceType": "summary of observed tool responses, not raw transcript",
+  "fixture": "be-nice M0 fixture: hello world.",
+  "selectionRestore": {
+    "setup": "Orca AXSelectAll verified",
+    "readSelectionLength": 32,
+    "probe": "target --app TextEdit --allow-write --value-only --json",
+    "writeValueResult": "OK",
+    "detail": "wrote + verified; value restore verified, selection restore verified",
+    "focus": "OK",
+    "clipboardChangeCount": [1244, 1244]
+  },
+  "undo": {
+    "writeToolCallID": "f3fdf487-c995-438e-b1ac-11e69523dd44",
+    "writeAction": "AXSetValue",
+    "writtenValue": "be-nice M0 fixture: hello world. [be-nice-probe]",
+    "writeVerification": "verified",
+    "undoToolCallID": "fcb72dc9-efb5-4bed-90de-26f91b9158ad",
+    "undoAction": "CmdOrCtrl+Z",
+    "deliveryVerification": "unverified synthetic_input",
+    "immediateSnapshot": "stale marker text",
+    "subsequentAppleScriptValue": "be-nice M0 fixture: hello world.",
+    "refreshedAXToolCallID": "b5533367-2206-42ac-b281-3a769c69687f",
+    "refreshedAXValue": "be-nice M0 fixture: hello world.",
+    "outcome": "single native undo restored original text"
+  },
+  "notTested": ["partial selection", "redo", "multiple undo steps", "rich text formatting preservation", "AXSelectedText replacement"]
+}

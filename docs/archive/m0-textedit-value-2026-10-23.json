@@ -1,0 +1,53 @@
+{
+  "exitCode": 0,
+  "report": {
+    "app": "TextEdit",
+    "bundleID": "com.apple.TextEdit",
+    "capabilities": [
+      {
+        "detail": "len=0",
+        "name": "read-selection",
+        "result": "OK"
+      },
+      {
+        "detail": "len=32",
+        "name": "read-value",
+        "result": "OK"
+      },
+      {
+        "detail": "value-only test",
+        "name": "position",
+        "result": "SKIPPED"
+      },
+      {
+        "detail": "wrote + verified; value restore verified, selection restore already original",
+        "name": "write-value",
+        "result": "OK"
+      },
+      {
+        "detail": "value-only test",
+        "name": "write-selection",
+        "result": "SKIPPED"
+      },
+      {
+        "detail": "not executed; press Cmd-Z manually and verify restore",
+        "name": "undo",
+        "result": "SKIPPED"
+      },
+      {
+        "detail": "frontmost + element identity match (AXTextArea)",
+        "name": "focus",
+        "result": "OK"
+      },
+      {
+        "detail": "changeCount before=1244 after=1244",
+        "name": "clipboard",
+        "result": "OK"
+      }
+    ],
+    "mode": "write",
+    "pid": 35240,
+    "role": "AXTextArea",
+    "title": ""
+  }
+}

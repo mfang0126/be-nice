@@ -1,0 +1,52 @@
+{
+  "record_type": "structured_observation_summary_not_raw_transcript",
+  "date": "2026-10-24",
+  "environment": "macOS 26.6.2 (25G83), Safari 26.6.2, local 127.0.0.1 fixture in a newly created Safari window",
+  "window_identity": {
+    "pid": 46790,
+    "window_id": 45129,
+    "title": "be-nice AX test target",
+    "url": "http://127.0.0.1:8765/index.html"
+  },
+  "fixture": "be-nice M0 fixture: hello world.",
+  "common_method": "Each identified control was set to the exact common fixture through Kimi computer-use set_value on its refreshed per-control AX index, focused in the frontmost Safari test window, then tested with mac-app/.build/debug/axprobe target --app Safari --allow-write --json. The checked-in page starts with control-specific marked values, so this fixture-installation step is required. The probe returned role and pid for every run.",
+  "results": {
+    "input": {
+      "role": "AXTextField",
+      "read_selection": "OK len=0",
+      "read_value": "OK exact 32-character common fixture",
+      "position": "OK range=0,3 verified; original selection restore verified",
+      "write_value": "OK wrote + verified; value restore verified; selection restore already original",
+      "write_selection": "FAIL/UNCONFIRMED: setter returned success; exact original remained after 500ms; no retry",
+      "focus": "OK",
+      "clipboard": "changeCount 1248 -> 1248"
+    },
+    "textarea": {
+      "role": "AXTextArea",
+      "read_selection": "OK len=0",
+      "read_value": "OK exact 32-character common fixture",
+      "position": "OK range=0,3 verified; original selection restore verified",
+      "write_value": "OK wrote + verified; value restore verified; selection restore already original",
+      "write_selection": "FAIL/UNCONFIRMED: setter returned success; exact original remained after 500ms; no retry",
+      "focus": "OK",
+      "clipboard": "changeCount 1248 -> 1248"
+    },
+    "contenteditable": {
+      "role": "AXTextArea",
+      "read_selection": "FAIL: AXSelectedText unavailable; AXError=-25212",
+      "read_value": "OK exact 32-character common fixture",
+      "position": "OK range=0,3 verified; original selection restore verified",
+      "write_value": "OK wrote + verified; value restore verified; selection restore already original",
+      "write_selection": "FAIL/UNCONFIRMED: setter returned success; exact original remained after 500ms; no retry",
+      "focus": "OK",
+      "clipboard": "changeCount 1248 -> 1248"
+    }
+  },
+  "native_undo": {
+    "status": "UNVERIFIED_ENVIRONMENT; no AXValue native-undo pass/fail claim",
+    "positive_control": "After restoring the exact input fixture, one background key event x produced the exact value 'be-nice M0 fixture: hello world. [input]x', confirmed by a separate AX read. One Cmd-Z then left that value unchanged, confirmed by another separate AX read.",
+    "scope_note": "The synthetic/background-keyboard positive control did not pass, so no AXValue undo trial was counted. Earlier exploratory key/undo attempts were discarded and are not used as evidence."
+  },
+  "cleanup": "All three controls were read back with their control-specific original fixtures. The dedicated Safari test window was then closed by its AX close button; the pre-existing Start Page window was not used for writes or closed.",
+  "scope": "Fixed ASCII local input/textarea/contenteditable only. No Unicode/IME/rich-text formatting, cross-site, repeated undo/redo, or concurrent-edit claim."
+}

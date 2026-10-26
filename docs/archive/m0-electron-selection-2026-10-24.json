@@ -1,0 +1,212 @@
+{
+  "runs": [
+    {
+      "control": "input",
+      "exitCode": 4,
+      "report": {
+        "app": "Electron",
+        "bundleID": "com.github.Electron",
+        "capabilities": [
+          {
+            "detail": "len=0",
+            "name": "read-selection",
+            "result": "OK"
+          },
+          {
+            "detail": "len=32",
+            "name": "read-value",
+            "result": "OK"
+          },
+          {
+            "detail": "range=0,3 verified; original selection restore verified",
+            "name": "position",
+            "result": "OK"
+          },
+          {
+            "detail": "wrote + verified; value restore verified, selection restore already original",
+            "name": "write-value",
+            "result": "OK"
+          },
+          {
+            "detail": "UNCONFIRMED: set returned success; value still original after 500 ms; left as-is (late write possible; selection left at probe range)",
+            "name": "write-selection",
+            "result": "FAIL"
+          },
+          {
+            "detail": "not executed; press Cmd-Z manually and verify restore",
+            "name": "undo",
+            "result": "SKIPPED"
+          },
+          {
+            "detail": "frontmost + element identity match (AXTextField)",
+            "name": "focus",
+            "result": "OK"
+          },
+          {
+            "detail": "changeCount before=1245 after=1245",
+            "name": "clipboard",
+            "result": "OK"
+          }
+        ],
+        "mode": "write",
+        "pid": 98962,
+        "role": "AXTextField",
+        "title": ""
+      }
+    },
+    {
+      "control": "textarea",
+      "exitCode": 4,
+      "report": {
+        "app": "Electron",
+        "bundleID": "com.github.Electron",
+        "capabilities": [
+          {
+            "detail": "len=0",
+            "name": "read-selection",
+            "result": "OK"
+          },
+          {
+            "detail": "len=32",
+            "name": "read-value",
+            "result": "OK"
+          },
+          {
+            "detail": "range=0,3 verified; original selection restore verified",
+            "name": "position",
+            "result": "OK"
+          },
+          {
+            "detail": "wrote + verified; value restore verified, selection restore already original",
+            "name": "write-value",
+            "result": "OK"
+          },
+          {
+            "detail": "UNCONFIRMED: set returned success; value still original after 500 ms; left as-is (late write possible; selection left at probe range)",
+            "name": "write-selection",
+            "result": "FAIL"
+          },
+          {
+            "detail": "not executed; press Cmd-Z manually and verify restore",
+            "name": "undo",
+            "result": "SKIPPED"
+          },
+          {
+            "detail": "frontmost + element identity match (AXTextArea)",
+            "name": "focus",
+            "result": "OK"
+          },
+          {
+            "detail": "changeCount before=1245 after=1245",
+            "name": "clipboard",
+            "result": "OK"
+          }
+        ],
+        "mode": "write",
+        "pid": 98962,
+        "role": "AXTextArea",
+        "title": ""
+      }
+    },
+    {
+      "control": "contenteditable",
+      "exitCode": 4,
+      "report": {
+        "app": "Electron",
+        "bundleID": "com.github.Electron",
+        "capabilities": [
+          {
+            "detail": "len=0",
+            "name": "read-selection",
+            "result": "OK"
+          },
+          {
+            "detail": "len=32",
+            "name": "read-value",
+            "result": "OK"
+          },
+          {
+            "detail": "range=0,3 verified; original selection restore verified",
+            "name": "position",
+            "result": "OK"
+          },
+          {
+            "detail": "wrote + verified; value restore verified, selection restore already original",
+            "name": "write-value",
+            "result": "OK"
+          },
+          {
+            "detail": "UNCONFIRMED: set returned success; value still original after 500 ms; left as-is (late write possible; selection left at probe range)",
+            "name": "write-selection",
+            "result": "FAIL"
+          },
+          {
+            "detail": "not executed; press Cmd-Z manually and verify restore",
+            "name": "undo",
+            "result": "SKIPPED"
+          },
+          {
+            "detail": "frontmost + element identity match (AXTextArea)",
+            "name": "focus",
+            "result": "OK"
+          },
+          {
+            "detail": "changeCount before=1245 after=1245",
+            "name": "clipboard",
+            "result": "OK"
+          }
+        ],
+        "mode": "write",
+        "pid": 98962,
+        "role": "AXTextArea",
+        "title": ""
+      }
+    }
+  ],
+  "subsequentState": {
+    "id": "ca213ce4-23cc-4b36-ae55-9f3a3cd7d530",
+    "ok": true,
+    "result": {
+      "screenshotStatus": {
+        "state": "skipped",
+        "reason": "no_screenshot_flag"
+      },
+      "screenshot": null,
+      "snapshot": {
+        "treeText": "App=com.github.Electron (pid 98962)\nWindow: \"be-nice AX test target\", App: Electron.\n\n0 standard window be-nice AX test target\n\t1 HTML content be-nice AX test target\n\t\t2 heading be-nice AX test target\n\t\t3 text 1. input[type=text]\n\t\t4 text field (settable), Value: be-nice M0 fixture: hello world.\n\t\t5 text 2. textarea\n\t\t6 text entry area (settable) be-nice M0 fixture: hello world.\n\t\t7 text 3. contenteditable (rich text)\n\t\t8 text entry area (settable) be-nice M0 fixture: hello world.\n\t\t\t9 text be-nice M0 fixture: hello world.\n\t10 close button\n\t11 full screen button, Secondary Actions: zoom the window\n\t12 minimise button\n\nThe focused UI element is 8 text entry area (settable) be-nice M0 fixture: hello world..",
+        "focusedElementId": 8,
+        "app": {
+          "name": "Electron",
+          "pid": 98962,
+          "bundleId": "com.github.Electron"
+        },
+        "coordinateSpace": "window",
+        "window": {
+          "platform": {
+            "layer": 0
+          },
+          "width": 640,
+          "screenIndex": 0,
+          "y": 426,
+          "isMinimized": false,
+          "height": 480,
+          "id": 44213,
+          "x": 864,
+          "title": "be-nice AX test target",
+          "isOffscreen": false
+        },
+        "truncation": {
+          "maxNodes": 1200,
+          "truncated": false,
+          "maxDepthReached": false,
+          "maxDepth": 64
+        },
+        "id": "F247CD3C-B361-46B4-B245-13796BD0C30A",
+        "elementCount": 13
+      }
+    },
+    "_meta": {
+      "runtimeId": "17bc33cf-d996-4e43-a11b-1ebcd1a47b56"
+    }
+  }
+}
