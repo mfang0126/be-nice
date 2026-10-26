@@ -156,7 +156,7 @@ private final class RewriteCard: NSView {
             scroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             scroll.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10)])
         setAccessibilityRole(.radioButton)
-        setAccessibilityLabel("\(name)，\(hint)")
+        setAccessibilityLabel("\(name), \(hint)")
         focusRingType = .exterior
         apply(chosen: false, enabled: true)
     }
@@ -179,7 +179,7 @@ private final class RewriteCard: NSView {
         text.drawsBackground = chosen
         text.backgroundColor = Palette.editing
         text.textColor = chosen ? Palette.primaryText : Palette.secondaryText
-        text.setAccessibilityLabel(chosen ? "编辑改写全文" : "\(name)全文")
+        text.setAccessibilityLabel(chosen ? "Edit rewrite" : "\(name) full text")
         alphaValue = enabled ? 1 : 0.7
     }
 
@@ -209,11 +209,11 @@ private final class RewriteCard: NSView {
 final class RewriteWindowController: NSWindowController, NSWindowDelegate {
     private let originalView = RewriteWindowController.staticTextView()
     private let status = RewriteWindowController.staticTextView()
-    private let cancelButton = RewriteButton(title: "取消", primary: false)
-    private let primaryButton = RewriteButton(title: "替换", primary: true)
+    private let cancelButton = RewriteButton(title: "Cancel", primary: false)
+    private let primaryButton = RewriteButton(title: "Replace", primary: true)
     private let panel = NSView()
     private let cardsRow = NSStackView()
-    // Reserved for the single-line "想怎么改" instruction field; hidden and unwired (PLAN「试用版之后第一项」).
+    // Reserved for the single-line "How should it change?" instruction field; hidden and unwired (PLAN「试用版之后第一项」).
     private let instructionSlot = NSView()
     private let instructionField = NSTextField()
     private var originalHeight: NSLayoutConstraint!
@@ -223,8 +223,8 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
     private let presentsWindows: Bool
     private let copyText: (String) -> Bool
     private var copyOnlyReason: String?
-    private let copyOnlyHelp = "仅可查看、编辑和复制，不能直接替换。请返回目标草稿重新生成。"
-    private let hintText = "←→ 切换　所选可直接修改　⌘↩ 替换　esc 关闭 · 替换后可撤销，不会发送"
+    private let copyOnlyHelp = "You can view, edit or copy this rewrite, but not replace."
+    private let hintText = "←→ switch · edit the selected card · ⌘↩ replace · esc close · undo available, nothing is sent"
     private var options: [RewriteOption] = []
     private var selected = 0
     private var notice: String?
@@ -274,7 +274,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         updateControls()
         window?.contentView?.layoutSubtreeIfNeeded()
         window?.setFrame(screenFrame, display: presentsWindows)
-        if self.options.isEmpty { showError("没有可用的改写，请关闭后重试。") }
+        if self.options.isEmpty { showError("No rewrites available. Close this and try again.") }
         guard presentsWindows else { return }
         activateApp()
         window?.makeKeyAndOrderFront(nil)
@@ -338,14 +338,14 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         }
         cancelButton.isEnabled = usable
         if copyOnlyReason != nil {
-            primaryButton.title = "复制改写"
+            primaryButton.title = "Copy rewrite"
         } else {
             let name = options.indices.contains(selected) ? Self.label(options[selected].style) : ""
-            primaryButton.title = name.isEmpty ? "替换" : "用「\(name)」替换"
+            primaryButton.title = name.isEmpty ? "Replace" : "Replace with \(name)"
         }
         primaryButton.isEnabled = usable && !options.isEmpty
         var parts: [String] = []
-        if busy { parts.append("正在确认并替换，请稍候…") }
+        if busy { parts.append("Checking and replacing…") }
         else if let notice { parts.append(notice) }
         if let copyOnlyReason, !busy { parts.append("\(copyOnlyReason) \(copyOnlyHelp)") }
         let emphasized = !busy && (copyOnlyReason != nil || (notice != nil && noticeIsError))
@@ -370,7 +370,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         guard active, !busy, copyOnlyReason == nil, cards.indices.contains(selected) else { return }
         let text = cards[selected].text.string
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            showError("请输入改写内容。")
+            showError("Enter some text first.")
             if presentsWindows { window?.makeFirstResponder(cards[selected].text) }
             return
         }
@@ -381,7 +381,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
     private func copyCandidate() {
         guard active, !busy, cards.indices.contains(selected) else { return }
         let copied = copyText(cards[selected].text.string)
-        setNotice(copied ? "已复制改写。" : "复制失败，请重试。", isError: !copied)
+        setNotice(copied ? "Copied." : "Copy failed. Try again.", isError: !copied)
     }
 
     @objc private func cancel() {
@@ -494,14 +494,14 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
 
         // Header: white band with the original text.
         originalView.textColor = Palette.secondaryText
-        originalView.setAccessibilityLabel("原文")
+        originalView.setAccessibilityLabel("Your draft")
         originalView.isSelectable = true
         let originalScroll = Self.scroll(originalView)
         originalScroll.scrollerStyle = .legacy  // always-visible scroller signals a long original
         originalScroll.autohidesScrollers = false
         originalHeight = originalScroll.heightAnchor.constraint(equalToConstant: 24)
         originalHeight.isActive = true
-        let originalLabel = NSTextField(labelWithString: "你写的")
+        let originalLabel = NSTextField(labelWithString: "Your draft")
         originalLabel.font = .systemFont(ofSize: 12, weight: .semibold)
         originalLabel.textColor = Palette.hint
         originalLabel.setContentHuggingPriority(.required, for: .horizontal)
@@ -509,7 +509,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
                                spacing: 16, alignment: .top)
 
         instructionSlot.isHidden = true
-        instructionField.placeholderString = "想怎么改"
+        instructionField.placeholderString = "How should it change?"
         instructionField.translatesAutoresizingMaskIntoConstraints = false
         instructionSlot.addSubview(instructionField)
         NSLayoutConstraint.activate([
@@ -537,7 +537,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
 
         // Footer: plain hint/status text (not a box) and the two actions.
         status.identifier = NSUserInterfaceItemIdentifier("rewrite-status")
-        status.setAccessibilityLabel("改写状态")
+        status.setAccessibilityLabel("Rewrite status")
         status.font = .systemFont(ofSize: 12)
         status.textContainerInset = NSSize(width: 0, height: 6)
         let statusScroll = Self.scroll(status)
@@ -608,17 +608,17 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
 
     private static func label(_ style: RewriteStyle) -> String {
         switch style {
-        case .direct: return NSLocalizedString("简洁直接", comment: "Direct rewrite style")
-        case .friendly: return NSLocalizedString("友好自然", comment: "Friendly rewrite style")
-        case .clear: return NSLocalizedString("温和清晰", comment: "Clear rewrite style")
+        case .direct: return NSLocalizedString("Direct", comment: "Direct rewrite style")
+        case .friendly: return NSLocalizedString("Friendly", comment: "Friendly rewrite style")
+        case .clear: return NSLocalizedString("Clear", comment: "Clear rewrite style")
         }
     }
 
     private static func hint(_ style: RewriteStyle) -> String {
         switch style {
-        case .direct: return "给赶时间的人：结论先行"
-        case .friendly: return "给同事：轻松、不生硬"
-        case .clear: return "给需要讲清楚的人：一句一事"
+        case .direct: return "For busy readers: lead with the point"
+        case .friendly: return "For teammates: relaxed, not stiff"
+        case .clear: return "For anyone who needs it spelled out: one idea per sentence"
         }
     }
 

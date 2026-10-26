@@ -335,7 +335,7 @@ struct WriteBackTests {
             expect(access.writes.count == 1, "unconfirmed write is not retried")
             expect(await core.undoAvailable,
                    "unconfirmed write keeps a possible-write undo record")
-            expect(WriteBackFailure.writeUnconfirmed(0).message.contains("may have occurred"),
+            expect(WriteBackFailure.writeUnconfirmed(0).message.contains("may have gone through"),
                    "unconfirmed message warns that a write may have occurred")
 
             // Simulate the late write becoming visible, then undo it.
@@ -359,7 +359,7 @@ struct WriteBackTests {
                    "third value stops the write")
             expect(access.writes.count == 1, "third value is not retried")
             expect(await core.undoAvailable, "third value keeps a possible-write record")
-            expect(WriteBackFailure.writeUnexpected.message.contains("may have occurred"),
+            expect(WriteBackFailure.writeUnexpected.message.contains("may have gone through"),
                    "unexpected message warns that a write may have occurred")
         }
 

@@ -54,7 +54,7 @@ struct RewriteCopyOnlyTests {
         present(reason)
         expect(!controller.window!.isVisible, "presentation suppressed")
         expect(copied.isEmpty && submitted.isEmpty, "stale generation does not copy or apply")
-        expect(button("primary").title == "复制改写" && button("primary").isEnabled, "primary becomes copy")
+        expect(button("primary").title == "Copy rewrite" && button("primary").isEnabled, "primary becomes copy")
         pick(1)
         expect(editor().string == "Second candidate", "stale candidate retained and viewable")
         expect(editor().isEditable, "copy-only still allows editing")
@@ -72,7 +72,7 @@ struct RewriteCopyOnlyTests {
         expect(editor().string == "First candidate", "other candidate remains independent")
         pick(1)
         expect(editor().string == "用户编辑的全文\nwith newline", "edited candidate survives navigation")
-        expect(statusView().string.contains("不能直接替换") && statusView().string.contains("重新生成"),
+        expect(statusView().string.contains("but not replace") && statusView().string.contains("view, edit or copy"),
                "copy-only explanation persists through navigation")
         let root = controller.window!.contentView!
         root.layoutSubtreeIfNeeded()
@@ -85,14 +85,14 @@ struct RewriteCopyOnlyTests {
         expect(!frames[0].intersects(frames[1]), "action controls do not overlap")
         expect(statusView().string.contains(reason), "full long reason remains available")
         expect(statusView().enclosingScrollView!.hasVerticalScroller, "long reason is scrollable")
-        expect(statusView().accessibilityLabel() == "改写状态", "reason has accessible name")
-        expect(editor().accessibilityLabel() == "编辑改写全文" && editor().isEditable, "candidate remains accessible and editable")
+        expect(statusView().accessibilityLabel() == "Rewrite status", "reason has accessible name")
+        expect(editor().accessibilityLabel() == "Edit rewrite" && editor().isEditable, "candidate remains accessible and editable")
         expect(root.bounds.contains(statusView().enclosingScrollView!.convert(statusView().enclosingScrollView!.bounds, to: root)),
                "status viewport stays in bounds")
         controller.dismiss()
         present()
         pick(0)
-        expect(button("primary").title == "用「简洁直接」替换", "normal mode primary is replace")
+        expect(button("primary").title == "Replace with Direct", "normal mode primary is replace")
         editor().string = "Edited before apply validation"
         commandReturn()
         expect(submitted == ["Edited before apply validation"], "valid submit uses edit once")
@@ -101,14 +101,14 @@ struct RewriteCopyOnlyTests {
         expect(submitted.count == 1, "busy rejects repeated keyboard submission")
         controller.resumeCopyOnly(reason: "目标已变化。")
         expect(editor().string == "Edited before apply validation", "failed apply retains edited result")
-        expect(button("primary").title == "复制改写" && !controller.window!.isVisible, "failed apply becomes copy-only and stays hidden in test")
+        expect(button("primary").title == "Copy rewrite" && !controller.window!.isVisible, "failed apply becomes copy-only and stays hidden in test")
         commandReturn()
         click("primary")
         expect(submitted.count == 1 && copied.last == "Edited before apply validation", "failed apply permits copy only")
         click("cancel")
         expect(cancelled == 1, "copy-only can cancel")
         present()
-        expect(button("primary").title == "用「简洁直接」替换", "new generation resets copy-only state")
+        expect(button("primary").title == "Replace with Direct", "new generation resets copy-only state")
         expect(copied.count == 2, "no lifecycle action copies implicitly")
         controller.dismiss()
         if failures == 0 { print("RewriteCopyOnlyTests PASS"); exit(0) }

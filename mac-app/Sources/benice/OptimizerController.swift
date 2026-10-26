@@ -19,7 +19,7 @@ final class OptimizerController {
         generation &+= 1
         let token = generation
         pendingTarget = target
-        statusWindow.show("正在准备改写…", target: target.anchorRect,
+        statusWindow.show("Rewriting…", target: target.anchorRect,
                           undo: recovery == nil ? nil : { [weak self] in self?.undoLast() },
                           cancel: { [weak self] in self?.cancelPreview() })
         request = Task { [weak self] in await self?.start(target, token: token) }
@@ -29,7 +29,7 @@ final class OptimizerController {
         let settings = SettingsStore().load()
         guard let url = URL(string: settings.baseURL), ModelClient.endpoint(for: url) != nil,
               !settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return fail("请先在 Settings 配置模型。", token: token)
+            return fail("Set up a model in Settings first.", token: token)
         }
         do {
             let key = try await Task.detached { try CredentialStore.loadAPIKey() ?? "" }.value
@@ -52,7 +52,7 @@ final class OptimizerController {
             guard generation == token, !Task.isCancelled else { return }
             // UI activation is deliberate and happens only after capture.
             let screen = NSScreen.screens.first { $0.frame.intersects(target.anchorRect) } ?? NSScreen.main
-            guard let screen else { return fail("无法确定目标屏幕。", token: token) }
+            guard let screen else { return fail("Couldn't find the screen for this window.", token: token) }
             statusWindow.hide()
             previewWindow.present(original: captured.original,
                 appName: NSRunningApplication(processIdentifier: target.pid)?.localizedName ?? target.bundleID,
@@ -89,7 +89,7 @@ final class OptimizerController {
             case .applied:
                 pendingTarget = nil
                 previewWindow.dismiss()
-                showStatus("已替换", anchor: target.anchorRect)
+                showStatus("Replaced", anchor: target.anchorRect)
             case .failed(let error):
                 previewWindow.resumeCopyOnly(reason: error.message)
                 showStatus(error.message, anchor: target.anchorRect)
@@ -112,7 +112,7 @@ final class OptimizerController {
             case .restored:
                 recovery = nil
                 recoveryTarget = nil
-                showStatus("已恢复原文", anchor: target.anchorRect)
+                showStatus("Restored", anchor: target.anchorRect)
             case .failed(let error): showStatus(error.message, anchor: target.anchorRect)
             }
         }
@@ -148,7 +148,7 @@ final class OptimizerController {
             app.activate(options: [])
         }
         statusWindow.hide()
-        if let target = recoveryTarget { showStatus("可撤销上次替换", anchor: target.anchorRect) }
+        if let target = recoveryTarget { showStatus("Undo last replace", anchor: target.anchorRect) }
     }
 
     private func fail(_ message: String, token: UInt64) {

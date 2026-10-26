@@ -159,7 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                                        action: #selector(openModelSettings), keyEquivalent: ",")
         modelSettings.target = self
         menu.addItem(modelSettings)
-        let undo = NSMenuItem(title: "撤销上次替换", action: #selector(undoLastRewrite), keyEquivalent: "")
+        let undo = NSMenuItem(title: "Undo Last Replace", action: #selector(undoLastRewrite), keyEquivalent: "")
         undo.target = self
         menu.addItem(undo)
 

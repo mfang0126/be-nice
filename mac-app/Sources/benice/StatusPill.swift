@@ -11,7 +11,7 @@ final class RewriteStatusController {
     private static let pad: CGFloat = 14
     private static let gap: CGFloat = 8
     private static let font = NSFont.systemFont(ofSize: 13)
-    private static let successMessages = ["已替换", "可撤销上次替换", "已恢复原文"]
+    private static let successMessages = ["Replaced", "Undo last replace", "Restored"]
 
     private let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 140, height: 36),
         styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
@@ -47,7 +47,7 @@ final class RewriteStatusController {
     }
 
     private static func buttonWidth(_ title: String) -> CGFloat {
-        ceil((title as NSString).size(withAttributes: [.font: font]).width) + (title == "撤销替换" ? 24 : 8)
+        ceil((title as NSString).size(withAttributes: [.font: font]).width) + (title == "Undo" ? 24 : 8)
     }
 
     func show(_ message: String, target: CGRect, undo: (() -> Void)?, cancel: (() -> Void)?) {
@@ -55,10 +55,10 @@ final class RewriteStatusController {
         cancelAction = cancel
         let kind = Self.kind(message: message, cancel: cancel != nil)
         var titles: [String] = []
-        if kind == .loading { titles = ["取消"] }
+        if kind == .loading { titles = ["Cancel"] }
         else {
-            if undo != nil { titles.append("撤销替换") }
-            if kind == .error || undo == nil { titles.append("收起") }
+            if undo != nil { titles.append("Undo") }
+            if kind == .error || undo == nil { titles.append("Dismiss") }
         }
         buttonTitles = titles
         let size = Self.size(message: message, buttons: titles)
@@ -85,9 +85,9 @@ final class RewriteStatusController {
         for title in titles.reversed() {
             let w = Self.buttonWidth(title)
             x -= w
-            let b = title == "撤销替换" ? Self.pillButton(title) : Self.plainButton(title)
+            let b = title == "Undo" ? Self.pillButton(title) : Self.plainButton(title)
             b.target = self
-            b.action = title == "撤销替换" ? #selector(performUndo) : #selector(performClose)
+            b.action = title == "Undo" ? #selector(performUndo) : #selector(performClose)
             b.frame = NSRect(x: x, y: (size.height - 24) / 2, width: w, height: 24)
             b.setAccessibilityLabel(title)
             root.addSubview(b)
@@ -101,7 +101,7 @@ final class RewriteStatusController {
         label.frame = NSRect(x: textX, y: 0, width: max(0, x + Self.gap - textX), height: size.height)
         label.cell?.usesSingleLineMode = false
         (label.cell as? NSTextFieldCell)?.isScrollable = false
-        label.setAccessibilityLabel("改写状态：\(message)")
+        label.setAccessibilityLabel("Rewrite status: \(message)")
         let h = ceil(label.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: label.frame.width, height: .greatestFiniteMagnitude)).height)
         label.frame.origin.y = (size.height - h) / 2
         label.frame.size.height = h

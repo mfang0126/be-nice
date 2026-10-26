@@ -66,29 +66,35 @@ public enum WriteBackFailure: Error, Sendable, Equatable {
     /// User-facing, short. Never includes captured document text.
     public var message: String {
         switch self {
-        case .busy: return "Another write-back operation is in progress."
-        case .nothingToApply: return "There is no preview to apply."
-        case .nothingToUndo: return "There is nothing to undo."
-        case .secureInput: return "Secure Input is enabled; write-back is disabled."
-        case .excludedApp(let id): return "Write-back is disabled for \(id)."
-        case .unsupportedApp(let id): return "\(id) is not in the supported app list."
-        case .unknownBundle: return "The target app has no bundle identifier; refusing to write."
-        case .noFrontmostApp: return "No frontmost app."
-        case .noFocusedElement: return "No focused element."
-        case .secureField: return "The focused control is a secure/password field."
-        case .notTextTarget(let role): return "Focused element is not editable text (\(role))."
-        case .valueUnavailable: return "Could not read the target's text value."
-        case .selectionUnavailable: return "Could not read or set a valid UTF-16 selection."
-        case .emptyText: return "The target text is empty."
-        case .notSettable(let attribute): return "\(attribute) is not settable on the target."
-        case .targetChanged(let mismatch): return "Target changed before write: \(mismatch.rawValue)."
-        case .emptySuggestion: return "The suggestion is empty."
-        case .noChange: return "The suggestion is identical to the original; nothing to apply."
-        case .requestFailed(let detail): return "Suggestion request failed: \(detail)"
-        case .writeUnconfirmed(let code):
-            return "A write may have occurred but was not confirmed (setter error \(code)). Check the target before retrying."
+        case .busy: return "Another replace is still running. Wait a moment and try again."
+        case .nothingToApply: return "There's no rewrite to apply."
+        case .nothingToUndo: return "There's nothing to undo."
+        case .secureInput: return "Can't read a password field."
+        case .excludedApp, .unsupportedApp: return "be-nice only works in Slack right now."
+        case .unknownBundle: return "be-nice only works in Slack right now."
+        case .noFrontmostApp: return "Slack isn't in front. Switch back to Slack and try again."
+        case .noFocusedElement: return "Click into the Slack message box and try again."
+        case .secureField: return "Can't read a password field."
+        case .notTextTarget: return "That isn't a text box. Click into the Slack message box and try again."
+        case .valueUnavailable: return "Couldn't read the draft. Click into the message box and try again."
+        case .selectionUnavailable: return "Couldn't read the selection. Click into the message box and try again."
+        case .emptyText: return "The message box is empty. Write a draft first."
+        case .notSettable: return "Slack won't let be-nice edit this box."
+        case .targetChanged(let mismatch):
+            switch mismatch {
+            case .focusChanged: return "Slack focus moved. Click back into the message box and try again."
+            case .notFrontmost: return "Slack isn't in front anymore. Switch back to Slack and try again."
+            case .bundleChanged: return "The app changed. Switch back to Slack and try again."
+            case .valueChanged: return "The draft changed. Rewrite it again."
+            case .selectionChanged: return "The selection changed. Rewrite it again."
+            }
+        case .emptySuggestion: return "The rewrite came back empty. Try again."
+        case .noChange: return "The rewrite is the same as your draft, so nothing was replaced."
+        case .requestFailed(let detail): return "Rewrite failed: \(detail)"
+        case .writeUnconfirmed:
+            return "The replace may have gone through but wasn't confirmed. Check Slack before trying again."
         case .writeUnexpected:
-            return "A write may have occurred and the value changed unexpectedly; stopped. Check the target before retrying."
+            return "The replace may have gone through, but the box changed unexpectedly. Check Slack before trying again."
         }
     }
 }
