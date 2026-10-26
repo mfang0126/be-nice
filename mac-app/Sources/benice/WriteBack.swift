@@ -554,6 +554,7 @@ public actor WriteBackController {
                         element: target.element) {
         case .applied:
             state = .verified
+            refocusSlackComposer(target)  // leave the caret in Slack's composer
             return .applied
         case .unconfirmed:
             let failure = WriteBackFailure.writeUnconfirmed(setError)
@@ -640,6 +641,7 @@ public actor WriteBackController {
         case .applied:
             undoRecord = nil
             state = .verified
+            refocusSlackComposer(record.target)  // leave the caret in Slack's composer
             return .restored
         case .unconfirmed:
             let failure = WriteBackFailure.writeUnconfirmed(setError)
