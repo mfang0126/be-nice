@@ -43,7 +43,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var requestMenuItem: NSMenuItem?
     private var shortcutMenuItem: NSMenuItem?
     private var settingsController: SettingsWindowController?
-    private var styleController: StyleWindowController?
     private var optimizerController: OptimizerController?
     private var triggerController: TriggerController?
     private var pollTimer: Timer?
@@ -328,33 +327,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc private func openModelSettings() {
         if settingsController == nil {
-            settingsController = SettingsWindowController(onOpenStyle: { [weak self] in
-                self?.openPersonalStyle()
-            })
+            settingsController = SettingsWindowController()
         }
         settingsController?.present()
-    }
-
-    private func openPersonalStyle() {
-        if styleController == nil {
-            styleController = StyleWindowController(
-                endpoint: { SettingsStore().load().baseURL },
-                extract: { samples in
-                    let settings = SettingsStore().load()
-                    let base = settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard let baseURL = URL(string: base) else {
-                        throw ModelClientError.invalidConfiguration("configure the base URL in Settings")
-                    }
-                    let apiKey = try await Task.detached {
-                        try CredentialStore.loadAPIKey() ?? ""
-                    }.value
-                    let client = ModelClient(
-                        config: ModelConfig(baseURL: baseURL, model: settings.model),
-                        apiKey: apiKey)
-                    return try await StyleExtraction.extract(samples: samples, client: client)
-                })
-        }
-        styleController?.present()
     }
 
     @objc private func openAccessibilitySettings() {

@@ -120,21 +120,7 @@ struct TriggerTests {
         expect(left == CGRect(x: -1800, y: 832, width: 200, height: 50),
                "negative-origin screen keeps x (got \(left))")
 
-        // Dot placement and clamping.
         let field = CGRect(x: 100, y: 832, width: 200, height: 50)
-        let dot = TriggerGeometry.dotOrigin(field: field, dotSize: 18, inset: 4)
-        expect(dot == CGPoint(x: 278, y: 860), "dot sits inside top-right (got \(dot))")
-
-        let clamped = TriggerGeometry.clamped(CGPoint(x: -100, y: 1200),
-                                              dotSize: 18, within: primary)
-        expect(clamped == CGPoint(x: 0, y: 964),
-               "dot clamps into the primary screen (got \(clamped))")
-
-        let negativeScreen = CGRect(x: -1920, y: 0, width: 1920, height: 1080)
-        let clampedLeft = TriggerGeometry.clamped(CGPoint(x: -2000, y: 5),
-                                                  dotSize: 18, within: negativeScreen)
-        expect(clampedLeft == CGPoint(x: -1920, y: 5),
-               "dot clamps on a negative-origin screen (got \(clampedLeft))")
 
         // Rectangular Rewrite entry uses the target screen's edge, not the field.
         let button = TriggerGeometry.buttonFrame(field: field, within: primary)

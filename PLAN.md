@@ -1,22 +1,7 @@
-# be-nice — 实施计划 v3（MVP 收敛版）
+# be-nice — 计划（Slack MVP）
 
-> 原计划：`mac-text-optimizer-plan.md`（2026-10-23）。v2 根据两轮独立评审重排；v3 把模型层改为 OpenAI 兼容协议，本地模型降为 optional。
-> 原则不变：先让 Slack 私聊闭环可用，再扩展场景；个人风格和模板后置；不 overkill。
-
-## v3 变更
-- **LLM 接入只认 OpenAI 兼容协议**（`/v1/chat/completions`）：base URL + API key + model 名三个配置项。任何 OpenAI 兼容服务（官方、中转、本地 Ollama/LM Studio/llama.cpp server）都能接——同一个协议，不需要 provider 特判。
-- **本地小模型（llama.cpp 嵌入、Qwen GGUF）整体后置为 optional**，不再是 MVP 依赖。`docs/research/review-3-local-model.md` 保留作未来本地档参考。
-- 附带收益：引擎层砍掉嵌入式推理、模型下载、GGUF/许可证分发问题，MVP 明显变小。
-
-## 历史修订（相对原计划，部分已被后续定案取代）
-
-> 下列第 2、4、5 项保留历史背景，不是当前要求。当前以「核心交互」「里程碑」「模型接入」为准：浮层与快捷键同在 M1；模型仅走 OpenAI 兼容协议，本地模型 optional。当前进度及接手入口见 [HANDOVER.md](HANDOVER.md)，不另立计划。
-
-1. **"任意输入框可安全读写"不是已验证前提**。读、定位、写 Value、换 SelectedText 是四种独立能力；API 返回 success 不等于真的写进去了（Slack 有假成功案例）。→ 用 M0 探针实测，出**支持矩阵**。
-2. **浮层按钮不是第一步**。它技术坑最多（焦点、坐标、全屏、多屏），但不是价值验证点。→ 推迟到 M3。
-3. **写回安全 > 功能**。LLM 请求期间用户继续打字/切窗口时绝不能误写。→ 写回状态机 + 目标复核是 MVP 必需，不是"以后"。
-4. **快捷键 + 显式选区**是可靠入口，比浮层按钮先做。
-5. **本地小模型是默认 provider**，不是附加项（隐私是核心卖点）。
+> 唯一计划来源，只记录**用户已确认**的决策和验收标准。进度看 [STATUS.md](STATUS.md)，术语看 [GLOSSARY.md](GLOSSARY.md)，历史证据在 [docs/archive/](docs/archive/)。
+> 原则：先让 Slack 私聊闭环可用，再扩展场景；个人风格和模板后置；不 overkill。新增范围须先经用户确认并写进本文件。
 
 ## 已确认交付约定（2026-10-25 21:49，grill-with-docs 共识）
 
@@ -26,7 +11,7 @@
 - 无法保证提及、链接、列表或富文本保留时，保留原草稿，提供改写预览和复制，明确说明不能直接替换；普通文本仍须直接替换。复制降级不算直接替换验收通过。
 - 先跑通私聊，再验证频道和线程，优先共用实现而非预建三套；三类通过后才称 Slack MVP 完成。
 - 用户已同意在明确交出的测试时段进行专用合成草稿的前台输入测试；具体时段尚未确定，不视为立即抢占窗口的授权。不得触碰既有草稿或发送消息。首次系统身份确认由用户完成，准备工作和测试执行由 Agent 承担。
-- 暂停无关工具和架构扩展，当前工作只服务上述闭环。PLAN 是唯一计划，GLOSSARY 仅术语，HANDOVER 仅状态和证据。
+- 暂停无关工具和架构扩展，当前工作只服务上述闭环。PLAN 是唯一计划，GLOSSARY 仅术语，STATUS 仅当前状态和证据。
 
 ## MVP 范围收敛（Slack 桌面版）
 
@@ -37,11 +22,11 @@
 - Enter 在改写编辑器只换行；确认替换绝不发送 Slack 消息。用户后续编辑后拒绝撤销覆盖。隐私和原目标复核不因收敛范围而削弱。
 - 首次辅助功能授权仍是实际 App 写回验收的前置条件；可先完成 Slack 能力调查与确定性开发。按探测结果决定实现，完成 feature 后独立 review。
 
-## 核心交互（2026-10-25 12:53 定案，实现与验收进行中）
+## 核心交互（2026-10-25 12:53 定案）
 
 **场景**：用户在受支持的输入框打好消息 → 点击屏幕边缘的 Rewrite 入口 → 当前工作屏幕出现居中遮罩，上方原文，下方 1–3 个不同风格的完整 Rewrite → 选择一个 → 展开全文并允许编辑 → 显式确认替换 → 回到原 App，可见按钮撤销最近一次替换。
 
-此定案取代输入框旁绿色圆点、下方建议卡片和固定侧栏。[HTML 交互草图](sidebar-sketch.html) 已确认；原生候选解析、全文窗口与安全写回接线已实现，确定性回归及固定文本 UI 冒烟已执行，Slack 专项验收仍待完成。Slack 仍未验证，不作支持承诺。
+此定案取代输入框旁绿色圆点、下方建议卡片和固定侧栏。[HTML 交互草图](docs/design/rewrite-sketch.html) 已确认。
 
 ### 位置与内容层级
 
@@ -87,38 +72,6 @@
 
 质量门槛：无需记住快捷键即可完成生成、选择、全文确认、替换和撤销；没有误写、关闭卡死或不可见的关键操作。M2 个性化盲评失败仍保留，新增多风格需独立保真评估，不能沿用旧模型请求成功作为质量通过。
 
-## Orca 分工与执行任务包（2026-10-25）
-
-目标：默认用 Sonnet 承担边界明确的开发，Haiku 承担机械验证与证据整理；协调者负责接口、安全核心和集成，不把整个仓库或完整聊天交给每个 worker。开发启动时通过 Orca 编排，已完成通用功能及开发诊断的多轮实现/review；当前按 S0–S4 推进 Slack。
-
-### 派发规则
-
-- 所有 worker 留在当前 worktree，不新建缺失未提交文件的 checkout，不 commit/push，不使用 reset/restore/stash/clean。每次派发给出绝对工作路径、任务 ID、允许修改文件、只读参考、输入输出契约、禁止事项、测试命令和完成标准。
-- 同时最多两个实现 worker；一个文件同一时刻只归一个 owner。共享接口由协调者先核实当前源码、定义并落地，随后放行并行任务；不得让 worker 猜测接口或互相等待未定义类型。
-- 现有源码和命令入口：`mac-app/Sources/benice/`、`mac-app/*Tests.swift`、`mac-app/README.md`；先读本任务指定文件，不扫描全仓库。源码改动前查调用方，测试使用已有独立 Swift selftest 风格，不新增框架。
-- Haiku 不负责 AX 写入、恢复记录生命周期、跨 actor 取消、Keychain 或焦点安全设计。遇到接口缺失、范围外修改、连续两次验证失败即停止并报告给协调者；不要自动扩大探索或升级模型。
-- 每块完成由不同 agent 独立 review，默认 Sonnet；安全/并发疑难才升级给协调者。review 只读改动文件及必要调用方，最多三个可复现高置信发现；不重复跑全套测试。报告限“改动文件 / 行为 / 测试结果 / 未解决问题”，禁止大段文件转储。
-- GUI、模型远程请求和最终集成测试由协调者串行执行，避免多个 agent 抢焦点或重复发送付费请求。只用合成样本，凭据不传入 worker brief。
-
-### 当前任务与依赖
-
-| ID / 执行者 | 所有权与范围 | 完成标准 |
-|---|---|---|
-| S0 / 协调者，Sonnet 辅助静态调查 | Slack 探测、专用 fixture、运行证据；先核对现有 axprobe | 记录 Slack/macOS 版本及实际编辑器能力；证据决定写回方式，不先开放 allowlist |
-| S1 / 协调者 + 独立 Sonnet review，依赖 S0 | `WriteBack.swift`、`TriggerController.swift` 及对应测试；必要时最小 Slack 专用实现 | 单次安全写入、独立读回、恢复；上下文切换/第三值/不确定写入正确处理；无自动发送 |
-| S2 / Sonnet + 协调者集成，依赖 S1 | `RewriteWindowController.swift`、`OptimizerController.swift` 及相关测试，派发时划定文件唯一 owner | 私聊内真实完成现有交互并独立 review，达到无终端、普通草稿无需手动复制粘贴的试用门槛；失效和复杂内容可查看/复制 |
-| S3 / Haiku 确定性检查，协调者真实测试，依赖 S2 | 已有测试和 Slack 验收记录 | 频道/私聊/线程、特殊内容、安全失败路径、无障碍逐项有证据；未测明确列出 |
-| S4 / 协调者 + 独立 Sonnet review，依赖 S3 | 最终集成、HANDOVER/README | 最终固定签名版本通过 Slack 闭环与保真检查，记录具体限制；不以模拟测试代替真实验收 |
-
-当前状态：S0 待完成。已有候选解析、全文编辑、安全核心、稳定开发签名和 CLI 诊断可复用；它们不代表 Slack 已适配。Orca run `run_1e499df41b44` 的旧 R0–R6 是已执行的通用开发历史，不再派发为当前任务。
-
-## 开发授权稳定化（2026-10-25 19:38，用户已授权实施）
-
-- 先固定开发签名身份、Debug Bundle ID 和用户 Applications 安装路径；debug 不再默默回退 ad-hoc。已建立持久本地签名身份并验证不同源码构建的 designated requirement 一致；新身份首次授权及授权保留仍未验证。
-- 不重置 TCC、不改 TCC.db、不关闭 SIP、不用 DEBUG 假返回权限成功，不将 sudo 或其他 agent 当作绕过授权的方法。
-- 连续两次不同构建检查 designated requirement 一致，并由运行中的 App 报告真实 Accessibility 状态；只有后者可证明授权保留。若稳定签名仍失败，才评估固定 AX helper。
-- 构建脚本与设置流程须独立 review，私钥与配置留在用户本机、仓库外，日志不包含秘密。首次系统身份验证由用户完成；日常构建测试自动化。
-
 ## 当前里程碑
 
 - **可行性门槛（S0）**：Slack 专用固定草稿安全读写和恢复已实测。失败则集中解决写回方式，不推进外观扩展。
@@ -126,45 +79,7 @@
 - **MVP 完成（S3–S4）**：私聊试用通过后，频道、线程及常见内容通过专项回归和独立 review；保真、无误写、不发送消息有证据。
 - **后置**：个人风格学习、其他 App 矩阵扩展、Windows、模板管理、自动抓取 Slack、历史库、嵌入式模型、公开分发签名公证。已有个人风格实现和旧盲评失败仅保留作历史证据。
 
-## 历史实现与证据（不是当前待办）
+## 模型接入（v3 定案，10-23 已提交的 PLAN v3；macOS only 见 PLAN v3.2）
 
-旧 M0/M1 已完成固定 fixture 探测及 TextEdit/Notes/Safari/Chrome/专用 Electron 的部分闭环，见下方历史矩阵和 [M1 运行证据](docs/research/m1-runtime-2026-10-24.md)。旧 M2 实现单个人风格，但盲评未通过。历史结果不证明新版 Rewrite 或 Slack 可用，不要求本轮重跑其他 App。
-
-## 模型接入（v3 定案）
-
-- **协议**：OpenAI 兼容 `/v1/chat/completions`。配置三件套：base URL、API key（Keychain）、model 名。
-- 本地模型 optional：任何本地服务只要暴露 OpenAI 兼容端点（Ollama、LM Studio、llama.cpp server）即天然可用，无需专门开发。
-- 未来"嵌入式本地模型"（llama.cpp + Qwen GGUF）如需再启，调研结论见 `docs/research/review-3-local-model.md`。
-
-## 历史跨 App 矩阵（2026-10-23 至 10-24，仅证据）
-
-本轮环境：macOS 26.6.2 (25G83)，2026-10-23 至 2026-10-24。`环境阻断` 表示目标发现/观察阶段受阻，未测到真实控件；`未测` 表示该能力尚未实际执行。两者都不构成支持或不支持结论。可用目标的 M0 能力矩阵及 M1 产品闭环已完成；Slack 环境阻断、浏览器/专用 Electron 的 SelectedText 未确认等原始条目仍按下表保留，不视为全目标全能力验收完成。定位列当前仅指 AXSelectedTextRange 设置；屏幕坐标读取尚未验证。运行证据见 [10-23 记录](docs/research/m0-runtime-2026-10-23.md) 和 [10-24 记录](docs/research/m0-runtime-2026-10-24.md)。写回须分别验证 AXValue 与 AXSelectedText；剪贴板保护单列。
-
-| 目标 / 版本 | 读选区 | 读全文 | 定位 | 写回 Value / SelectedText | undo | 焦点保持 | 剪贴板保护 | 备注 |
-|------|--------|--------|------|------|------|----------|----------|------|
-| TextEdit 1.20 (415) | 空/全选/局部选区通过 | 通过 | 全选恢复及局部范围 20,5 通过 | 通过（含恢复） / 局部 hello→HELLO 通过 | Value 与 SelectedText 各单次 Cmd-Z 后读回原文 | 通过 | 本次 changeCount 不变 | ASCII 固定 fixture；Unicode/IME/富文本未测；见 10-24 记录 |
-| Notes 4.13 | 空/局部选区通过 | 通过 | 范围 0,3 及局部 20,5 通过 | 通过（含恢复） / 局部 hello→HELLO 通过（含恢复） | Value 与 SelectedText 各单次 Cmd-Z 后读回原文 | 通过 | 本次 changeCount 不变 | 专用新建 note、ASCII fixture；Unicode/IME/富文本格式未测；见 10-24 记录 |
-| Safari 26.6.2 input | 空选区通过 | 通过 | 范围 0,3 设置及恢复通过 | 通过（含恢复） / 500ms 内未确认 | 未验证（键盘正向对照未通过） | 通过 | 本次 changeCount 不变 | 本地 ASCII fixture；undo 不作支持/不支持结论；见 10-24 记录 |
-| Safari 26.6.2 textarea | 空选区通过 | 通过 | 范围 0,3 设置及恢复通过 | 通过（含恢复） / 500ms 内未确认 | 未验证（键盘正向对照未通过） | 通过 | 本次 changeCount 不变 | 同上 |
-| Safari 26.6.2 contenteditable | AXSelectedText 不可用（-25212） | 通过 | 范围 0,3 设置及恢复通过 | 通过（含恢复） / 500ms 内未确认 | 未验证（键盘正向对照未通过） | 通过 | 本次 changeCount 不变 | 同上；未验证富文本格式保留 |
-| Chrome 156.0.8078.47 input | 空选区通过 | 通过 | 范围 0,3 设置及恢复通过 | 通过（含恢复） / 500ms 内未确认 | 未验证（键盘正向对照未建立） | 通过 | 本次 changeCount 不变 | 本地 ASCII fixture；undo 不作支持/不支持结论；见 10-24 记录 |
-| Chrome 156.0.8078.47 textarea | 空选区通过 | 通过 | 范围 0,3 设置及恢复通过 | 通过（含恢复） / 500ms 内未确认 | 未验证（键盘正向对照未建立） | 通过 | 本次 changeCount 不变 | 同上 |
-| Chrome 156.0.8078.47 contenteditable | 空选区通过 | 通过 | 范围 0,3 设置及恢复通过 | 通过（含恢复） / 500ms 内未确认 | 未验证（键盘正向对照未建立） | 通过 | 本次 changeCount 不变 | 同上；未验证富文本格式保留 |
-| Slack 桌面（版本待确认） | 未测 | 未测 | 未测 | 未测 / 未测 | 未测 | 未测 | 未测 | 标准安装路径及 Spotlight 未找到；防假成功 |
-| VS Code 1.142.0 纯文本编辑器 | 空选区通过；局部 hello 可读 | 通过 | 范围 0,3 通过；局部 20,5 首次读回不一致、复测通过 | 500ms 内未确认 / 局部写未确认 | 未执行（无已确认写入可撤销） | 通过 | 本次 changeCount 不变 | 专用 /tmp 纯文本 fixture；Value 500ms 内未观察到生效；SelectedText 即时及后续读取未确认，暂不纳入可写支持；未测集成终端；见 10-24 记录 |
-| Terminal 2.15 (470.2) | 策略阻断 | 策略阻断 | 策略阻断 | 策略阻断 / 策略阻断 | 不执行 | 不执行 | 不执行 | CLI 实测 BLOCKED_EXCLUDED_APP；在发现焦点前排除，未读写命令行 |
-| Electron 33.4.11 input | 读取通过 | 通过 | 设置及恢复通过 | 通过（含恢复） / 500ms 内未确认 | AXValue 后单次 Cmd-Z 未恢复 | 通过 | 本次 changeCount 不变 | 异步写需等待；SelectedText 超时 FAIL，不认定永久无效；AXValue 原生 undo 未通过；含按键正向对照 |
-| Electron 33.4.11 textarea | 读取通过 | 通过 | 设置及恢复通过 | 通过（含恢复） / 500ms 内未确认 | AXValue 后单次 Cmd-Z 未恢复 | 通过 | 本次 changeCount 不变 | 同上；仅固定 fixture；AXValue 原生 undo 未通过；含按键正向对照 |
-| Electron 33.4.11 contenteditable | 读取通过 | 通过 | 设置及恢复通过 | 通过（含恢复） / 500ms 内未确认 | AXValue 后单次 Cmd-Z 未恢复 | 通过 | 本次 changeCount 不变 | 同上；未验证富文本格式保留；AXValue 原生 undo 未通过；含按键正向对照 |
-
-## 参考实现
-
-- WritingAssistant（选区浮层与粘贴策略）、Selara（目标复核）——README 不是可靠性证明，复用前审代码与许可证。
-- TypeTide：AX 读选区 + 剪贴板兜底 + 粘贴回原处保 undo；已知限制：部分 app 无选区/文本边界接口、剪贴板管理器可能留下历史记录。
-- Raycast AI Commands / Grammarly Desktop：公开资料证明"AX + 粘贴"路线存在，内部实现未公开。
-
-## 评审证据
-
-- `docs/research/review-1-plan-risks.md` — 计划技术风险评审（deleg_73b4e599）
-- `docs/research/review-2-ax-facts.md` — AX/NSPanel 实证事实（deleg_4764e1fb）
-- `docs/research/review-3-local-model.md` — 本地小模型调研（deleg_6a833a52）
+- 只走 OpenAI 兼容 `/v1/chat/completions`：base URL、API key（Keychain）、model 名三项配置；不做 provider 特判、自动重试或 fallback。
+- 本地模型 optional：Ollama、LM Studio、llama.cpp server 等暴露兼容端点即可直接用。嵌入式本地模型的旧调研见 `docs/archive/review-3-local-model.md`。

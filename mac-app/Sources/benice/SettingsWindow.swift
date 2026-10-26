@@ -133,7 +133,6 @@ private enum SaveResult: Sendable {
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let store: SettingsStore
-    private let onOpenStyle: () -> Void
     private let baseURLField = NSTextField()
     private let modelField = NSTextField()
     private let apiKeyField = NSSecureTextField()
@@ -144,12 +143,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         button.bezelStyle = .rounded
         button.keyEquivalent = "\r"
         button.keyEquivalentModifierMask = []
-        return button
-    }()
-
-    private lazy var styleButton: NSButton = {
-        let button = NSButton(title: "Personal Style…", target: self, action: #selector(openPersonalStyle))
-        button.bezelStyle = .rounded
         return button
     }()
 
@@ -171,9 +164,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// Drops stale async Keychain results (reload/save completions).
     private var stateGeneration = 0
 
-    init(store: SettingsStore = SettingsStore(), onOpenStyle: @escaping () -> Void = {}) {
+    init(store: SettingsStore = SettingsStore()) {
         self.store = store
-        self.onOpenStyle = onOpenStyle
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 230),
             styleMask: [.titled, .closable],
@@ -243,7 +235,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         statusLabel.preferredMaxLayoutWidth = 400
         statusLabel.setAccessibilityLabel("Settings status")
 
-        let buttons = NSStackView(views: [closeButton, styleButton, saveButton])
+        let buttons = NSStackView(views: [closeButton, saveButton])
         buttons.orientation = .horizontal
         buttons.spacing = 8
 
@@ -270,8 +262,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         baseURLField.nextKeyView = modelField
         modelField.nextKeyView = apiKeyField
         apiKeyField.nextKeyView = closeButton
-        closeButton.nextKeyView = styleButton
-        styleButton.nextKeyView = saveButton
+        closeButton.nextKeyView = saveButton
         saveButton.nextKeyView = baseURLField
     }
 
@@ -344,7 +335,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         baseURLField.isEnabled = !saving
         modelField.isEnabled = !saving
         apiKeyField.isEnabled = !saving
-        styleButton.isEnabled = !saving
         closeButton.isEnabled = !saving
         window?.standardWindowButton(.closeButton)?.isEnabled = !saving
         updateSaveButtonState()
@@ -428,10 +418,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func show(_ message: String, isError: Bool) {
         statusLabel.textColor = isError ? .systemRed : .secondaryLabelColor
         statusLabel.stringValue = message
-    }
-
-    @objc private func openPersonalStyle() {
-        onOpenStyle()
     }
 
     @objc private func closeWindow() {

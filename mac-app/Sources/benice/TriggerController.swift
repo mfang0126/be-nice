@@ -125,8 +125,6 @@ enum TriggerPolicy {
 // MARK: - Geometry (pure, self-checked)
 
 enum TriggerGeometry {
-    static let dotDiameter: CGFloat = 18
-    static let dotInset: CGFloat = 4
     static let buttonSize = CGSize(width: 88, height: 32)
 
     /// Keep the entry at the screen edge without covering the focused input.
@@ -157,20 +155,8 @@ enum TriggerGeometry {
                height: ax.height)
     }
 
-    /// Dot inside the field's top-right corner, which avoids most typed text.
-    static func dotOrigin(field: CGRect, dotSize: CGFloat = dotDiameter,
-                          inset: CGFloat = dotInset) -> CGPoint {
-        CGPoint(x: field.maxX - dotSize - inset,
-                y: field.maxY - dotSize - inset)
-    }
-
-    /// Keeps the dot inside one screen even when the field is partly off-screen
+    /// Keeps the entry inside one screen even when the field is partly off-screen
     /// or on a display with a negative origin.
-    static func clamped(_ origin: CGPoint, dotSize: CGFloat = dotDiameter,
-                        within bounds: CGRect) -> CGPoint {
-        clamped(origin, size: CGSize(width: dotSize, height: dotSize), within: bounds)
-    }
-
     static func clamped(_ origin: CGPoint, size: CGSize, within bounds: CGRect) -> CGPoint {
         CGPoint(x: max(bounds.minX, min(origin.x, bounds.maxX - size.width)),
                 y: max(bounds.minY, min(origin.y, bounds.maxY - size.height)))
