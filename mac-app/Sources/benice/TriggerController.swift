@@ -132,11 +132,12 @@ enum TriggerGeometry {
 
     /// Keep the entry just outside the focused input's top-right corner, never on it
     /// (AppKit coordinates, y up). Falls back to right of, below, then left of the field.
-    static func buttonFrame(field: CGRect, within bounds: CGRect) -> CGRect? {
-        guard bounds.width >= buttonSize.width, bounds.height >= buttonSize.height else {
+    static func buttonFrame(field: CGRect, within bounds: CGRect,
+                            size: CGSize = buttonSize) -> CGRect? {
+        guard bounds.width >= size.width, bounds.height >= size.height else {
             return nil
         }
-        let w = buttonSize.width, h = buttonSize.height, gap: CGFloat = 6
+        let w = size.width, h = size.height, gap: CGFloat = 6
         let candidates = [
             CGPoint(x: field.maxX - w, y: field.maxY + gap),          // above, right-aligned
             CGPoint(x: field.maxX + gap, y: field.maxY - h),          // right, top-aligned
@@ -144,8 +145,8 @@ enum TriggerGeometry {
             CGPoint(x: field.minX - w - gap, y: field.maxY - h),      // left, top-aligned
         ]
         for origin in candidates {
-            let frame = CGRect(origin: clamped(origin, size: buttonSize, within: bounds),
-                               size: buttonSize)
+            let frame = CGRect(origin: clamped(origin, size: size, within: bounds),
+                               size: size)
             // Clamping must not slide it away from the field (e.g. a mostly off-screen field).
             let touchesField = frame.intersects(field.insetBy(dx: -(gap + 1), dy: -(gap + 1)))
             if !frame.intersects(field) && touchesField { return frame }
