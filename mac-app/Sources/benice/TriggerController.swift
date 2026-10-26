@@ -214,9 +214,14 @@ private enum TriggerAX {
             ancestorRoles: ancestors, windowTitle: windowTitle, secureInputEnabled: false) else { return nil }
         // Slack: anchor to the composer box (the nearest ancestor that also holds the
         // formatting and send toolbars) so the button never covers Slack's controls.
-        let anchor = bundleID == TriggerPolicy.slackBundleID
-            ? (composerBox(of: element, deadline: deadline) ?? element) : element
-        guard let rect = geometry(of: anchor, deadline: deadline) else { return nil }
+        guard let fieldRect = geometry(of: element, deadline: deadline) else { return nil }
+        var rect = fieldRect
+        if bundleID == TriggerPolicy.slackBundleID,
+           let box = composerBox(of: element, deadline: deadline),
+           let boxRect = geometry(of: box, deadline: deadline),
+           boxRect.contains(fieldRect), boxRect.height <= 400 {  // never a page-sized container
+            rect = boxRect
+        }
 
         return Snapshot(pid: pid, bundleID: bundleID, role: role, mode: mode,
                         axRect: rect, element: element)

@@ -653,6 +653,48 @@ struct WriteBackTests {
             expect(access.writes.count == 1, "blocked Electron undo performs no second write")
         }
 
+        // 29. Slack pins the conversation (window title) per transaction.
+        let slack = "com.tinyspeck.slackmacgap"
+        func slackSetup(_ title: String? = "Ann (DM) - Work - Slack") -> FakeAccess {
+            let access = wholeSetup()
+            access.bundles[100] = slack
+            access.windowTitle = title
+            return access
+        }
+        do {
+            let access = slackSetup()
+            let core = controller(access, "hello, world.")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "Slack apply succeeds with unchanged title")
+            expect(access.writes.count == 1, "Slack unchanged-title apply writes once")
+            expect(await core.undo() == .restored, "Slack undo succeeds with unchanged title")
+        }
+        do {
+            let access = slackSetup()
+            let core = controller(access, "hello, world.")
+            _ = await core.requestPreview()
+            access.windowTitle = "Bob (DM) - Work - Slack"
+            expect(await core.apply() == .failed(.targetChanged(.focusChanged)),
+                   "Slack apply refused after conversation switch")
+            expect(access.writes.isEmpty, "refused Slack apply performs no write")
+        }
+        do {
+            let access = slackSetup()
+            let core = controller(access, "hello, world.")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "setup Slack apply for undo title check")
+            access.windowTitle = "Bob (DM) - Work - Slack"
+            expect(await core.undo() == .failed(.targetChanged(.focusChanged)),
+                   "Slack undo refused after conversation switch")
+            expect(access.writes.count == 1, "refused Slack undo performs no second write")
+        }
+        for title in [nil, ""] as [String?] {
+            let access = slackSetup(title)
+            expect(await controller(access).requestPreview() == .failed(.unsupportedApp(slack)),
+                   "Slack capture refused with empty window title (\(title ?? "nil"))")
+            expect(!access.calls.contains("value"), "empty-title Slack capture reads no text")
+        }
+
         if failures == 0 {
             print("WriteBackTests PASS")
         } else {

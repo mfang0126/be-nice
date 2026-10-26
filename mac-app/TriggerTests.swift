@@ -50,6 +50,15 @@ struct TriggerTests {
         expect(decision("com.github.Electron", "AXTextArea", ancestors: inWeb)
                 == .hide(.unsupportedApp),
                "Electron fixture requires a verified window title")
+        // Slack: composer sits 10 levels below AXWebArea (walk stops at the web area).
+        let slackDeep = Array(repeating: "AXGroup", count: 9) + ["AXWebArea"]
+        expect(decision("com.tinyspeck.slackmacgap", "AXTextArea", ancestors: slackDeep)
+                == .show(.wholeValue),
+               "Slack composer with AXWebArea at depth 10 -> whole value")
+        expect(decision("com.tinyspeck.slackmacgap", "AXTextArea",
+                        ancestors: Array(repeating: "AXGroup", count: 9))
+                == .hide(.outsideWebContent),
+               "Slack without AXWebArea ancestor is hidden")
         expect(decision("com.apple.Safari", "AXTextField") == .hide(.outsideWebContent),
                "Safari address bar without AXWebArea ancestor is hidden")
         expect(decision("com.github.Electron", "AXTextField") == .hide(.outsideWebContent),
