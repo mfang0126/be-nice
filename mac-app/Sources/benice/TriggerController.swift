@@ -53,7 +53,10 @@ enum TriggerPolicy {
         "com.apple.Safari",
         "com.google.Chrome",
         "com.github.Electron",
+        slackBundleID,
     ]
+
+    static let slackBundleID = "com.tinyspeck.slackmacgap"
 
     /// Terminal-family bundles (same list as the M0 probe) plus VS Code, whose
     /// setters returned success without a confirmed effect in M0.
@@ -190,7 +193,7 @@ private enum TriggerAX {
 
     static let callTimeout: Float = 0.15
     static let snapshotDeadline: TimeInterval = 0.6
-    static let maxAncestorDepth = 8
+    static let maxAncestorDepth = 16  // Slack composer sits 10 levels below AXWebArea
 
     static func capture(pid: pid_t, bundleID: String) -> Snapshot? {
         guard AXIsProcessTrusted(), !IsSecureEventInputEnabled() else { return nil }
@@ -209,10 +212,33 @@ private enum TriggerAX {
         guard case .show(let mode) = TriggerPolicy.decision(
             bundleID: bundleID, role: role, subrole: subrole,
             ancestorRoles: ancestors, windowTitle: windowTitle, secureInputEnabled: false) else { return nil }
-        guard let rect = geometry(of: element, deadline: deadline) else { return nil }
+        // Slack: anchor to the composer box (the nearest ancestor that also holds the
+        // formatting and send toolbars) so the button never covers Slack's controls.
+        let anchor = bundleID == TriggerPolicy.slackBundleID
+            ? (composerBox(of: element, deadline: deadline) ?? element) : element
+        guard let rect = geometry(of: anchor, deadline: deadline) else { return nil }
 
         return Snapshot(pid: pid, bundleID: bundleID, role: role, mode: mode,
                         axRect: rect, element: element)
+    }
+
+    /// Nearest ancestor (up to 4 levels) that directly contains an AXToolbar: in
+    /// Slack that box holds the formatting bar, the text area and the send bar.
+    private static func composerBox(of element: AXUIElement,
+                                    deadline: TimeInterval) -> AXUIElement? {
+        var current = element
+        for _ in 0..<4 {
+            guard let raw = copyAttribute(current, "AXParent", deadline: deadline),
+                  CFGetTypeID(raw) == AXUIElementGetTypeID() else { return nil }
+            let parent = raw as! AXUIElement
+            AXUIElementSetMessagingTimeout(parent, callTimeout)
+            if let children = copyAttribute(parent, "AXChildren", deadline: deadline) as? [AXUIElement],
+               children.contains(where: { stringAttribute($0, "AXRole", deadline: deadline) == "AXToolbar" }) {
+                return parent
+            }
+            current = parent
+        }
+        return nil
     }
 
     /// The AXParent walk stops at the first AXWebArea, the depth cap, the

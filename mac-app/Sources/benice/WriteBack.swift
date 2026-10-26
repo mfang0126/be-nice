@@ -222,7 +222,12 @@ public enum WriteBackPolicy {
         "com.apple.Safari",
         "com.google.Chrome",
         "com.github.Electron",
+        slackBundleID,
     ]
+
+    /// Slack desktop (MVP target). Its window title names the conversation
+    /// ("<name> (DM) - <workspace> - Slack"), so it is pinned per transaction.
+    public static let slackBundleID = "com.tinyspeck.slackmacgap"
 
     public static let excludedBundleIDs: Set<String> = [
         "com.apple.Terminal",
@@ -282,6 +287,8 @@ public actor WriteBackController {
         let selectionRange: NSRange?
         let selectedText: String?
         let mode: WriteMode
+        /// Slack only: the focused window title at capture; apply/undo require it unchanged.
+        var conversationTitle: String? = nil
     }
 
     private struct UndoRecord: Sendable {
@@ -661,8 +668,13 @@ public actor WriteBackController {
         case .selection, .wholeValue: break
         }
         let windowTitle = bundleID == WriteBackPolicy.electronFixtureBundleID
+            || bundleID == WriteBackPolicy.slackBundleID
             ? access.focusedWindowTitle(pid: pid) : nil
         guard WriteBackPolicy.allowsWindow(bundleID: bundleID, title: windowTitle) else {
+            return .failure(.unsupportedApp(bundleID))
+        }
+        let conversationTitle = bundleID == WriteBackPolicy.slackBundleID ? windowTitle : nil
+        if bundleID == WriteBackPolicy.slackBundleID, conversationTitle?.isEmpty != false {
             return .failure(.unsupportedApp(bundleID))
         }
 
@@ -696,7 +708,8 @@ public actor WriteBackController {
                                            originalValue: value,
                                            selectionRange: nil,
                                            selectedText: nil,
-                                           mode: .wholeValue))
+                                           mode: .wholeValue,
+                                           conversationTitle: conversationTitle))
         }
 
         // Selection-capable apps keep auto selection-vs-whole behavior.
@@ -719,7 +732,8 @@ public actor WriteBackController {
                                            originalValue: value,
                                            selectionRange: nil,
                                            selectedText: nil,
-                                           mode: .wholeValue))
+                                           mode: .wholeValue,
+                                           conversationTitle: conversationTitle))
         }
         if let failure = settableFailure(for: .selectedText, on: element) {
             return .failure(failure)
@@ -731,7 +745,8 @@ public actor WriteBackController {
                                        originalValue: value,
                                        selectionRange: range,
                                        selectedText: selectedText,
-                                       mode: .selection))
+                                       mode: .selection,
+                                       conversationTitle: conversationTitle))
     }
 
     /// Recheck immediately before apply (and before offering a preview).
@@ -747,6 +762,10 @@ public actor WriteBackController {
             ? access.focusedWindowTitle(pid: target.pid) : nil
         guard WriteBackPolicy.allowsWindow(bundleID: target.bundleID, title: windowTitle) else {
             return .unsupportedApp(target.bundleID)
+        }
+        if let title = target.conversationTitle,
+           access.focusedWindowTitle(pid: target.pid) != title {
+            return .targetChanged(.focusChanged)
         }
         guard let focused = access.focusedElement(pid: target.pid),
               access.sameElement(focused, target.element) else {
@@ -778,6 +797,10 @@ public actor WriteBackController {
             ? access.focusedWindowTitle(pid: record.target.pid) : nil
         guard WriteBackPolicy.allowsWindow(bundleID: record.target.bundleID, title: windowTitle) else {
             return .failure(.unsupportedApp(record.target.bundleID))
+        }
+        if let title = record.target.conversationTitle,
+           access.focusedWindowTitle(pid: record.target.pid) != title {
+            return .failure(.targetChanged(.focusChanged))
         }
         guard let focused = access.focusedElement(pid: record.target.pid),
               access.sameElement(focused, record.target.element) else {
