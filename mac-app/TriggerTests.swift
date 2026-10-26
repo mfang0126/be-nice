@@ -143,6 +143,9 @@ struct TriggerTests {
             size: TriggerGeometry.buttonSize, within: negativeBounds)
         expect(rectangularClamp == CGPoint(x: -88, y: -32),
                "clamping accounts for the full rectangular button")
+        expect(TriggerGeometry.buttonFrame(field: CGRect(x: 2000, y: 400, width: 300, height: 60),
+                                           within: primary) == nil,
+               "a field off this screen gets no button instead of one parked at the edge")
         let topField = CGRect(x: 1300, y: 450, width: 212, height: 532)
         expect(TriggerGeometry.buttonFrame(field: topField, within: primary)
                 == CGRect(x: 1424, y: 412, width: 88, height: 32),

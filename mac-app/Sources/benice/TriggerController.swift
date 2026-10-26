@@ -143,7 +143,9 @@ enum TriggerGeometry {
         for origin in candidates {
             let frame = CGRect(origin: clamped(origin, size: buttonSize, within: bounds),
                                size: buttonSize)
-            if !frame.intersects(field) { return frame }
+            // Clamping must not slide it away from the field (e.g. a mostly off-screen field).
+            let touchesField = frame.intersects(field.insetBy(dx: -(gap + 1), dy: -(gap + 1)))
+            if !frame.intersects(field) && touchesField { return frame }
         }
         return nil
     }
