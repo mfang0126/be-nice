@@ -695,6 +695,31 @@ struct WriteBackTests {
             expect(!access.calls.contains("value"), "empty-title Slack capture reads no text")
         }
 
+        // 30. Slack drafts with emoji/mentions/links are never replaced.
+        do {
+            let access = slackSetup()
+            access.rich = true
+            expect(await controller(access).requestPreview() == .failed(.richContent),
+                   "Slack draft with rich content is not offered for replace")
+            expect(access.writes.isEmpty, "rich-content refusal performs no write")
+        }
+        do {
+            let access = slackSetup()
+            let core = controller(access, "hello, world.")
+            _ = await core.requestPreview()
+            access.rich = true
+            expect(await core.apply() == .failed(.richContent),
+                   "Slack apply refused when rich content appears before write")
+            expect(access.writes.isEmpty, "late rich-content refusal performs no write")
+        }
+        do {
+            let access = wholeSetup()
+            access.rich = true
+            let core = controller(access, "hello, world.")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "rich-content check is Slack-only")
+        }
+
         if failures == 0 {
             print("WriteBackTests PASS")
         } else {
@@ -768,6 +793,7 @@ private final class FakeAccess: TextTargetAccess, @unchecked Sendable {
     var otherElement = TargetElement(token: FakeToken())
     var focused: TargetElement?
     var windowTitle: String? = "be-nice AX test target"
+    var rich = false
     var roleValue: String? = "AXTextArea"
     var subroleValue: String?
     var storedValue = ""
@@ -807,6 +833,8 @@ private final class FakeAccess: TextTargetAccess, @unchecked Sendable {
         calls.append("focusedElement")
         return focused
     }
+
+    func hasRichContent(_ element: TargetElement) -> Bool { rich }
 
     func focusedWindowTitle(pid: pid_t) -> String? {
         calls.append("windowTitle")

@@ -62,6 +62,9 @@ public enum WriteBackFailure: Error, Sendable, Equatable {
     /// The read-back saw a third value or could not read it. A write may have
     /// occurred. Deliberately carries no captured document text.
     case writeUnexpected
+    /// Slack draft contains emoji, mentions, links or other non-text content that
+    /// a plain-text replace would drop; only copying is offered.
+    case richContent
 
     /// User-facing, short. Never includes captured document text.
     public var message: String {
@@ -75,6 +78,7 @@ public enum WriteBackFailure: Error, Sendable, Equatable {
         case .noFrontmostApp: return "Slack isn't in front. Switch back to Slack and try again."
         case .noFocusedElement: return "Click into the Slack message box and try again."
         case .secureField: return "Can't read a password field."
+        case .richContent: return "This draft has emoji, mentions or links that a replace would drop."
         case .notTextTarget: return "That isn't a text box. Click into the Slack message box and try again."
         case .valueUnavailable: return "Couldn't read the draft. Click into the message box and try again."
         case .selectionUnavailable: return "Couldn't read the selection. Click into the message box and try again."
@@ -200,12 +204,16 @@ public protocol TextTargetAccess: Sendable {
     func setSelectedRange(_ range: NSRange, on element: TargetElement) -> Int32
     /// Sets AXFocused on this exact element (used to hand focus back to the captured Slack composer).
     func focus(_ element: TargetElement) -> Int32
+    /// True when the editor holds non-text children (images such as emoji, links,
+    /// mention pills) that AXValue does not represent.
+    func hasRichContent(_ element: TargetElement) -> Bool
     func uptime() -> TimeInterval
     func sleep(_ seconds: TimeInterval)
 }
 
 extension TextTargetAccess {
     public func focus(_ element: TargetElement) -> Int32 { -25205 }  // kAXErrorCannotComplete
+    public func hasRichContent(_ element: TargetElement) -> Bool { false }
 }
 
 public protocol SuggestionProviding: Sendable {
@@ -800,6 +808,9 @@ public actor WriteBackController {
         guard access.value(of: target.element) == target.originalValue else {
             return .targetChanged(.valueChanged)
         }
+        if target.conversationTitle != nil, access.hasRichContent(target.element) {
+            return .richContent
+        }
         if target.mode == .selection {
             guard let range = target.selectionRange,
                   access.selectedRange(of: target.element) == range else {
@@ -962,6 +973,30 @@ public struct SystemTextTargetAccess: TextTargetAccess {
 
     public func focus(_ element: TargetElement) -> Int32 {
         setAttribute(element, "AXFocused", kCFBooleanTrue)
+    }
+
+    /// Bounded walk (depth 4, 300 nodes). Unknown or unreadable trees count as plain;
+    /// the value/readback checks still guard the write itself.
+    public func hasRichContent(_ element: TargetElement) -> Bool {
+        guard let root = element.axElement else { return false }
+        let richRoles: Set<String> = ["AXImage", "AXLink", "AXButton"]
+        var queue: [(AXUIElement, Int)] = [(root, 0)]
+        var visited = 0
+        while !queue.isEmpty, visited < 300 {
+            let (node, depth) = queue.removeFirst()
+            visited += 1
+            var raw: CFTypeRef?
+            guard depth < 4,
+                  AXUIElementCopyAttributeValue(node, "AXChildren" as CFString, &raw) == .success,
+                  let children = raw as? [AXUIElement] else { continue }
+            for child in children {
+                var role: CFTypeRef?
+                if AXUIElementCopyAttributeValue(child, "AXRole" as CFString, &role) == .success,
+                   let r = role as? String, richRoles.contains(r) { return true }
+                queue.append((child, depth + 1))
+            }
+        }
+        return false
     }
 
     public func setSelectedText(_ text: String, on element: TargetElement) -> Int32 {
