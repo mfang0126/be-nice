@@ -1,16 +1,62 @@
-# be-nice
+# Be Nice
 
-> Turns your raw thoughts into messages that make people feel valued. Because someone has to.
+Rewrite your Slack drafts into clearer, kinder messages — pick from three versions, replace in place, undo anytime.
 
-A macOS menu-bar app that rewrites the Slack draft you just typed into one to three complete versions (concise, friendly, gentle). You pick one, edit it if you like, confirm, and it replaces your draft. Undo is one visible button away. Nothing is sent for you.
+![Be Nice rewrite window](docs/screenshot.png)
 
-**Status:** in development. The rewrite UI and safe write-back core exist; Slack support is still being verified and is not usable yet. See [STATUS.md](STATUS.md).
+*(Synthetic sample draft.)*
 
-- Model access: any OpenAI-compatible endpoint (base URL, API key, model). Local servers work; a remote endpoint receives your draft.
-- macOS only. Personal style learning, other apps and Windows are deferred.
+A macOS menu-bar app for the Slack desktop app. You write a draft as usual; Be Nice rewrites the whole draft (no need to select anything) into three versions: **Direct**, **Friendly** and **Clear**. You pick one, optionally edit it, confirm, and it replaces your draft in Slack's message box. A visible **Undo** button restores your original text. Be Nice never sends a message for you.
 
-Developers and agents: start with [AGENTS.md](AGENTS.md).
+## Status
+
+Early preview (v0.1.0).
+
+- Verified: Slack direct messages, plain-text drafts.
+- Not yet verified or limited: channels and threads, drafts with rich content (emoji images, attachments, formatting — in that case you can only copy the result), non-English input methods, very long drafts.
+- If Be Nice can't safely confirm the target message box, it refuses to replace and offers copy only.
+
+## Install
+
+1. Download `BeNice-0.1.0-macos.zip` from [Releases](https://github.com/mfang0126/be-nice/releases).
+2. Unzip, move **Be Nice.app** to `/Applications`.
+3. The app isn't notarized (no Apple Developer ID). The first time, **right-click → Open** and confirm.
+4. Grant **Accessibility** access in System Settings → Privacy & Security when asked. It is needed to read and replace the text in Slack's message box.
+
+Built for macOS 13 or later; so far tested on macOS 26 only.
+
+## Setup
+
+Open **Settings** from the menu-bar icon and enter:
+
+- **Base URL** of any OpenAI-compatible endpoint (`/v1/chat/completions`)
+- **API key** (stored in your Keychain)
+- **Model** name
+
+Local servers such as Ollama or LM Studio work. **Privacy:** with a remote endpoint, your draft text is sent to that provider. Be Nice has no server of its own and bundles no model.
+
+## Use
+
+1. Type a draft in Slack.
+2. Click the **Rewrite** button above Slack's message box, or press **⌃⌥⌘Space**.
+3. Choose a version, edit if you like, and confirm to replace the draft.
+4. Click **Undo** to get your original back.
+
+## Build from source
+
+```sh
+sh mac-app/scripts/build-release.sh   # builds "Be Nice.app" and a zip in mac-app/.build/release-dist/
+sh mac-app/scripts/run-tests.sh       # compile + self-tests
+```
+
+Requires Xcode command-line tools with Swift 6. Contributors: see [AGENTS.md](AGENTS.md) and [mac-app/README.md](mac-app/README.md).
+
+## Limitations
+
+- Slack desktop only, macOS only.
+- Two conversations with the same name can't be told apart when checking the target.
+- No personal style learning yet.
 
 ## License
 
-TBD (leaning MIT). No model weights are bundled or downloaded.
+[MIT](LICENSE). Be Nice is an independent project and is not affiliated with, endorsed by, or sponsored by Slack Technologies.

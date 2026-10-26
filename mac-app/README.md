@@ -23,6 +23,15 @@ sh mac-app/scripts/check-dev.sh --runtime  # also reads the running dev app's re
 
 `check-dev.sh` exit codes: `0` pass, `1` deterministic failure or stale/unavailable runtime metadata, `2` Accessibility not granted, `64` bad arguments. Passing checks is not product acceptance.
 
+## Release build
+
+```sh
+sh mac-app/scripts/build-release.sh   # ad-hoc signed "Be Nice.app" + BeNice-<version>-macos.zip in .build/release-dist/, prints sha256
+swift mac-app/scripts/make-icon.swift /tmp/icon-out   # regenerates AppIcon.icns; copy it to Support/
+```
+
+No local certificate needed; not notarized, so users right-click → Open the first time. Release builds have DEBUG off: the API key comes from the Keychain via Settings.
+
 ## Development build and signing
 
 ```sh
