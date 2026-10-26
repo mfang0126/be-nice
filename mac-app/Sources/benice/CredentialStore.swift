@@ -24,6 +24,11 @@ public enum CredentialStore {
     nonisolated(unsafe) private static var cachedKey: String?
     private static let cacheLock = NSLock()
 
+    #if DEBUG
+    static let devKeyFile = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/be-nice/dev-api-key")
+    #endif
+
     private static let service = "be-nice.model-api-key"
     private static let account = "default"
 
@@ -69,6 +74,16 @@ public enum CredentialStore {
     /// Returns the stored key, or `nil` when none is stored.
     public static func loadAPIKey() throws -> String? {
         if let cached = cacheLock.withLock({ cachedKey }) { return cached }
+        #if DEBUG
+        // Development builds are re-signed on every build, which makes macOS ask for the
+        // Keychain password again each time. Dev builds read a 0600 file written by
+        // scripts/configure-dev-model.sh instead; release builds never compile this.
+        if let devKey = try? String(contentsOf: devKeyFile, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines), !devKey.isEmpty {
+            cacheLock.withLock { cachedKey = devKey }
+            return devKey
+        }
+        #endif
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne

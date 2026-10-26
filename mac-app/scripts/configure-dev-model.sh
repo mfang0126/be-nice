@@ -13,7 +13,9 @@ key=$(sed -n 's/^DEEPINFRA_API_KEY=//p' "$HOME/.hermes/.env" | tail -1 | tr -d '
 
 defaults write "$DOMAIN" be-nice.model.baseURL "$BASE_URL"
 defaults write "$DOMAIN" be-nice.model.id "$MODEL"
-# Let the app itself create the item so it owns it (no per-read authorization).
-security delete-generic-password -s be-nice.model-api-key -a default >/dev/null 2>&1 || true
-printf '%s' "$key" | "$APP/Contents/MacOS/benice" --store-api-key
+# Debug builds read this 0600 file instead of the Keychain, so rebuilds never
+# trigger a Keychain password prompt (see CredentialStore.loadAPIKey).
+dir="$HOME/Library/Application Support/be-nice"
+mkdir -p "$dir" && chmod 700 "$dir"
+( umask 077; printf '%s' "$key" > "$dir/dev-api-key" )
 echo "configured: $BASE_URL  model=$MODEL  key=(from ~/.hermes/.env)"
