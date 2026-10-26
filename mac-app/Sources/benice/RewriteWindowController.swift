@@ -5,18 +5,19 @@ private func rgb(_ hex: UInt32, alpha: CGFloat = 1) -> NSColor {
             blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
 }
 
-/// Design B (docs/design/rewrite-directions/project/Compare.dc.html): fixed light palette, so the panel
-/// is pinned to Aqua and stays readable in dark mode.
+/// Design B (docs/design/rewrite-directions/project/Compare.dc.html) in Slack's palette (user, 2026-10-27):
+/// selection blue, send-button green for the replace action. Pinned to Aqua so it stays readable.
 private enum Palette {
-    static let accent = rgb(0x0A64D6)
+    static let accent = rgb(0x1264A3)    // Slack selection/link blue: card ring, radio
+    static let action = rgb(0x007A5A)    // Slack send-button green: primary replace/copy button
     static let body = rgb(0xF5F5F7)
     static let line = rgb(0xE4E4E7)
     static let cardLine = rgb(0xE0E0E5)
-    static let primaryText = rgb(0x1D1D1F)
+    static let primaryText = rgb(0x1D1C1D)
     static let secondaryText = rgb(0x3A3A3C)
     static let hint = rgb(0x6B6B70)
     static let warning = rgb(0xB3261E)
-    static let editing = rgb(0xF0F6FF)
+    static let editing = rgb(0xEEF6FB)
 }
 
 @MainActor
@@ -53,7 +54,7 @@ private final class RewriteButton: NSButton {
         isBordered = false
         wantsLayer = true
         layer?.cornerRadius = 8
-        layer?.backgroundColor = (primary ? Palette.accent : .white).cgColor
+        layer?.backgroundColor = (primary ? Palette.action : .white).cgColor
         if !primary {
             layer?.borderWidth = 1
             layer?.borderColor = rgb(0xD1D1D6).cgColor

@@ -361,10 +361,15 @@ private final class TriggerDotView: NSButton {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        title = "Rewrite"
-        bezelStyle = .rounded
-        font = .systemFont(ofSize: 13, weight: .medium)
-        setButtonType(.momentaryPushIn)
+        // Slack aubergine pill so the entry reads as part of Slack's composer area.
+        isBordered = false
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(srgbRed: 0x4A / 255, green: 0x15 / 255, blue: 0x4B / 255, alpha: 1).cgColor
+        layer?.cornerRadius = frameRect.height / 2
+        attributedTitle = NSAttributedString(string: "✎ Rewrite", attributes: [
+            .foregroundColor: NSColor.white,
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold)])
+        setButtonType(.momentaryChange)
         focusRingType = .none
         target = self
         action = #selector(clicked)

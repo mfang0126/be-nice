@@ -64,7 +64,7 @@ final class RewriteStatusController {
         let size = Self.size(message: message, buttons: titles)
         let root = NSView(frame: NSRect(origin: .zero, size: size))
         root.wantsLayer = true
-        root.layer?.backgroundColor = NSColor(srgbRed: 0x1D / 255, green: 0x1D / 255, blue: 0x1F / 255, alpha: 1).cgColor
+        root.layer?.backgroundColor = NSColor(srgbRed: 0x1D / 255, green: 0x1C / 255, blue: 0x1D / 255, alpha: 1).cgColor
         root.layer?.cornerRadius = size.height / 2
         root.setAccessibilityElement(false)
 
@@ -147,7 +147,7 @@ final class RewriteStatusController {
         b.layer?.cornerRadius = 12
         b.attributedTitle = NSAttributedString(string: title, attributes: [
             .font: NSFont.systemFont(ofSize: 13, weight: .medium),
-            .foregroundColor: NSColor(srgbRed: 0x1D / 255, green: 0x1D / 255, blue: 0x1F / 255, alpha: 1)])
+            .foregroundColor: NSColor(srgbRed: 0x1D / 255, green: 0x1C / 255, blue: 0x1D / 255, alpha: 1)])
         return b
     }
 }
