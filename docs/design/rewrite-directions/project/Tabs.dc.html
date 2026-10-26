@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>C 一屏到底</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#0A64D6}a:hover{color:#084FA8}
+button{font:inherit;cursor:pointer}
+textarea{font:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', system-ui, sans-serif; background: #E9E6E1">
+  <div aria-hidden="true" style="position: absolute; left: 120px; top: 70px; width: 1200px; height: 760px; border-radius: 12px; background: #FFFFFF; box-shadow: 0 20px 60px rgba(0,0,0,0.18); display: flex; overflow: hidden">
+    <div style="width: 240px; background: #3F0E40"></div>
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; padding: 24px; gap: 16px">
+      <div style="height: 14px; width: 40%; background: #ECEAE6; border-radius: 7px"></div>
+      <div style="height: 14px; width: 62%; background: #ECEAE6; border-radius: 7px"></div>
+      <div style="border: 1px solid #CFCBC4; border-radius: 10px; padding: 16px; font-size: 15px; color: #1D1C1D">{{draft}}</div>
+    </div>
+  </div>
+
+  <sc-if value="{{showPanel}}" hint-placeholder-val="{{ true }}">
+    <div style="position: absolute; inset: 0; background: rgba(20,20,22,0.42)"></div>
+    <div role="dialog" aria-label="Rewrite" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 760px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 30px 80px rgba(0,0,0,0.35); overflow: hidden">
+      <div style="padding: 20px 24px 0; display: flex; flex-direction: column; gap: 16px">
+        <div role="tablist" aria-label="改写风格" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 10px; background: #EFEFF2">
+          <sc-for list="{{options}}" as="o" hint-placeholder-count="3">
+            <button type="button" role="tab" aria-selected="{{o.on}}" onClick="{{o.pick}}" style="{{o.tabStyle}}">{{o.label}} <span style="font-weight: 400; color: #8E8E93; font-size: 12px">{{o.key}}</span></button>
+          </sc-for>
+        </div>
+        <label for="c-edit" style="position: absolute; width: 1px; height: 1px; overflow: hidden">改写结果，可直接修改</label>
+        <textarea id="c-edit" value="{{cur}}" onChange="{{onEdit}}" rows="5" style="width: 100%; box-sizing: border-box; resize: none; border: none; padding: 4px 2px; font-size: 20px; line-height: 1.6; color: #1D1D1F; background: #FFFFFF; outline: none"></textarea>
+        <div style="padding: 12px 14px; border-radius: 10px; background: #F5F5F7; display: flex; gap: 10px; align-items: baseline">
+          <span style="flex: none; font-size: 12px; font-weight: 600; color: #6B6B70">原文</span>
+          <span style="font-size: 14px; line-height: 1.5; color: #6B6B70">{{draft}}</span>
+        </div>
+      </div>
+      <div style="margin-top: 16px; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #E4E4E7">
+        <span style="font-size: 12px; color: #6B6B70">⌘1–3 切换　可直接修改　⌘↩ 替换　esc 关闭</span>
+        <div style="display: flex; gap: 10px">
+          <button type="button" onClick="{{close}}" style="height: 36px; padding: 0 18px; border-radius: 8px; border: 1px solid #D1D1D6; background: #FFFFFF; color: #1D1D1F; font-size: 14px">取消</button>
+          <button type="button" onClick="{{apply}}" style="height: 36px; padding: 0 22px; border-radius: 8px; border: none; background: #0A64D6; color: #FFFFFF; font-size: 14px; font-weight: 600">替换</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{isDone}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 22px; background: #1D1D1F; color: #FFFFFF; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.25)">
+      <span>已替换</span>
+      <button type="button" onClick="{{undo}}" style="height: 30px; padding: 0 12px; border-radius: 15px; border: none; background: #FFFFFF; color: #1D1D1F; font-size: 13px; font-weight: 600">撤销替换</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{isIdle}}" hint-placeholder-val="{{ false }}">
+    <button type="button" onClick="{{open}}" style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); height: 36px; padding: 0 16px; border-radius: 18px; border: none; background: #0A64D6; color: #FFFFFF; font-size: 13px; font-weight: 600; box-shadow: 0 8px 24px rgba(10,100,214,0.35)">✎ Rewrite</button>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { stage: 'pick', sel: 0, edits: {}, applied: null };
+  }
+  renderVals() {
+    const draft0 = 'hi 那个报告我看了 有几个地方数据不对 你明天之前改一下吧 不然周五没法给客户';
+    const opts = [
+      { label: '简洁直接', key: '⌘1', text: '报告有几处数据需要修正，请明天之前改好，周五要交给客户。' },
+      { label: '友好自然', key: '⌘2', text: 'Hi，报告我看过了，整体不错！有几个数据好像不太对，麻烦明天前帮忙改一下，这样周五就能顺利给客户了。' },
+      { label: '温和清晰', key: '⌘3', text: '你好，报告我已经看完了。里面有几处数据需要再核对一下。能否在明天之前修改好？因为周五需要发给客户。' },
+    ];
+    const s = this.state;
+    const cur = s.edits[s.sel] ?? opts[s.sel].text;
+    return {
+      draft: s.stage === 'done' && s.applied ? s.applied : draft0,
+      showPanel: s.stage === 'pick',
+      isDone: s.stage === 'done',
+      isIdle: s.stage === 'idle',
+      options: opts.map((o, i) => {
+        const on = i === s.sel;
+        return {
+          ...o, on,
+          pick: () => this.setState({ sel: i }),
+          tabStyle: 'height: 34px; border: none; border-radius: 7px; font-size: 14px; font-weight: 600; ' + (on ? 'background: #FFFFFF; color: #1D1D1F; box-shadow: 0 1px 3px rgba(0,0,0,0.15)' : 'background: transparent; color: #3A3A3C'),
+        };
+      }),
+      cur,
+      onEdit: (e) => this.setState({ edits: { ...s.edits, [s.sel]: e.target.value } }),
+      close: () => this.setState({ stage: 'idle', edits: {} }),
+      apply: () => this.setState({ stage: 'done', applied: cur }),
+      undo: () => this.setState({ stage: 'idle', applied: null, edits: {} }),
+      open: () => this.setState({ stage: 'pick', edits: {} }),
+    };
+  }
+}
+</script>
+</body>
+</html>
