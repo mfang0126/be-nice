@@ -122,26 +122,31 @@ struct TriggerTests {
 
         let field = CGRect(x: 100, y: 832, width: 200, height: 50)
 
-        // Rectangular Rewrite entry uses the target screen's edge, not the field.
+        // Rewrite entry sits just above the field's top-right corner, outside it.
         let button = TriggerGeometry.buttonFrame(field: field, within: primary)
-        expect(button == CGRect(x: 1412, y: 475, width: 88, height: 32),
-               "Rewrite is centered at the right edge (got \(String(describing: button)))")
+        expect(button == CGRect(x: 212, y: 888, width: 88, height: 32),
+               "Rewrite hugs the field's top-right corner (got \(String(describing: button)))")
         let negativeBounds = CGRect(x: -1920, y: -1080, width: 1920, height: 1080)
-        let negativeButton = TriggerGeometry.buttonFrame(field: .zero, within: negativeBounds)
-        expect(negativeButton == CGRect(x: -100, y: -556, width: 88, height: 32),
-               "Rewrite handles negative x and y screen origins")
+        let negativeField = CGRect(x: -800, y: -600, width: 400, height: 60)
+        let negativeButton = TriggerGeometry.buttonFrame(field: negativeField, within: negativeBounds)
+        expect(negativeButton == CGRect(x: -488, y: -534, width: 88, height: 32),
+               "Rewrite handles negative x and y screen origins (got \(String(describing: negativeButton)))")
+        let rightEdgeField = CGRect(x: 1000, y: 300, width: 512, height: 682)
+        expect(TriggerGeometry.buttonFrame(field: rightEdgeField, within: primary)
+                == CGRect(x: 1424, y: 262, width: 88, height: 32),
+               "a field touching the top-right corner gets the button below it")
+        let wideField = CGRect(x: 100, y: 0, width: 1412, height: 982)
+        expect(TriggerGeometry.buttonFrame(field: wideField, within: primary)
+                == CGRect(x: 6, y: 950, width: 88, height: 32),
+               "a field filling top, right and bottom gets the button on its left")
         let rectangularClamp = TriggerGeometry.clamped(CGPoint(x: 100, y: 100),
             size: TriggerGeometry.buttonSize, within: negativeBounds)
         expect(rectangularClamp == CGPoint(x: -88, y: -32),
                "clamping accounts for the full rectangular button")
-        let overlappingField = CGRect(x: 1300, y: 450, width: 212, height: 100)
-        let movedButton = TriggerGeometry.buttonFrame(field: overlappingField, within: primary)
-        expect(movedButton == CGRect(x: 1412, y: 558, width: 88, height: 32),
-               "Rewrite moves above an overlapping input")
         let topField = CGRect(x: 1300, y: 450, width: 212, height: 532)
         expect(TriggerGeometry.buttonFrame(field: topField, within: primary)
-                == CGRect(x: 1412, y: 410, width: 88, height: 32),
-               "Rewrite moves below when there is no room above")
+                == CGRect(x: 1424, y: 412, width: 88, height: 32),
+               "Rewrite moves below when there is no room above or right")
         expect(TriggerGeometry.buttonFrame(field: primary, within: primary) == nil,
                "Rewrite hides when no non-overlapping edge space exists")
         expect(TriggerGeometry.buttonFrame(field: .zero,
