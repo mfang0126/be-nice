@@ -1,0 +1,30 @@
+{
+  "record_type": "structured_observation_summary_not_raw_transcript",
+  "date": "2026-10-24",
+  "environment": "macOS 26.6.2 (25G83), VS Code 1.142.0, dedicated /tmp/be-nice-m0-vscode-fixture.txt",
+  "accessibility_support": "NOT_RECORDED; results apply only to this existing VS Code configuration and do not establish default-settings compatibility",
+  "reproduction": "Create exactly 32 bytes without a trailing newline at /tmp/be-nice-m0-vscode-fixture.txt, then run '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code --new-window /tmp/be-nice-m0-vscode-fixture.txt'. Keep VS Code frontmost and launch probes from a background driver, not by focusing a terminal.",
+  "identity": {
+    "pid": 26967,
+    "bundle_id": "com.microsoft.VSCode",
+    "window_title": "be-nice-m0-vscode-fixture.txt",
+    "role": "AXTextArea"
+  },
+  "fixture": "be-nice M0 fixture: hello world.",
+  "safety": "The first VS Code activation still focused an existing PLAN.md editor. No probe or write was run then. The fixture was subsequently opened with the VS Code CLI --new-window; exact window title, focused value and role were confirmed before probing. No integrated terminal was used as a target.",
+  "preflight": {
+    "trailing_newline": "The initial file ended with a newline; axprobe read len=33 and blocked position/write-value/write-selection with BLOCKED_ORIGINAL_MISMATCH. The fixture was replaced with exactly 32 characters before write testing."
+  },
+  "results": {
+    "read_selection": "OK len=0",
+    "read_value": "OK exact 32-character fixture",
+    "position": "axprobe range=0,3 set and original selection restore verified. The separate partial-selection first attempt returned a range readback mismatch; a second attempt read back location=20 length=5 and selected text hello. Range positioning is therefore observable but not claimed uniformly reliable.",
+    "write_value": "FAIL/UNCONFIRMED: AXValue setter returned success; exact original remained after the bounded 500ms readback; no retry; write-selection was skipped by axprobe after this failure",
+    "write_selection": "FAIL/UNCONFIRMED: dedicated partial-selection probe set range 20,5 and read selected text hello; AXSelectedText setter returned success but immediate exact value was original, and a separate later AX read still returned exact original; no automatic retry",
+    "undo": "NOT_EXECUTED: no verified AXValue or AXSelectedText replacement remained to undo",
+    "focus": "OK frontmost + element identity match",
+    "clipboard": "changeCount 1248 -> 1248 during axprobe"
+  },
+  "cleanup": "Fixture text remained the exact original after both unconfirmed writes. The empty selection was restored, the dedicated VS Code window was closed by its AX close button, and the temporary fixture file was removed. No existing user editor was modified.",
+  "scope": "One plain-text ASCII editor fixture only. No Unicode/IME, integrated terminal, extension host, concurrent edit, save/revert, or native-undo capability claim."
+}

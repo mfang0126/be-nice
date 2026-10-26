@@ -1,0 +1,60 @@
+{
+  "record_type": "structured_observation_summary_not_raw_transcript",
+  "date": "2026-10-24",
+  "environment": "macOS 26.6.2 (25G83), Chrome 156.0.8078.47, local 127.0.0.1 fixture in managed tab 1266528269, window/page title 'be-nice AX test target'",
+  "fixture": "be-nice M0 fixture: hello world.",
+  "common_method": "Each control was filled with the exact common fixture through the local WebBridge test session, focused in the frontmost Chrome window, then tested with mac-app/.build/debug/axprobe target --app 'Google Chrome' --allow-write --json.",
+  "results": {
+    "input": {
+      "role": "AXTextField",
+      "read_selection": "OK len=0",
+      "read_value": "OK exact 32-character common fixture",
+      "position": "OK range=0,3 verified; original selection restore verified",
+      "write_value": "OK wrote + verified; value restore verified; selection restore already original",
+      "write_selection": "FAIL/UNCONFIRMED: setter returned success; exact original remained after 500ms; no retry; later AX snapshot still original",
+      "focus": "OK",
+      "clipboard": "changeCount 1248 -> 1248"
+    },
+    "textarea": {
+      "role": "AXTextArea",
+      "read_selection": "OK len=0",
+      "read_value": "OK exact 32-character common fixture",
+      "position": "OK range=0,3 verified; original selection restore verified",
+      "write_value": "OK wrote + verified; value restore verified; selection restore already original",
+      "write_selection": "FAIL/UNCONFIRMED: setter returned success; exact original remained after 500ms; no retry",
+      "focus": "OK",
+      "clipboard": "changeCount 1248 -> 1248"
+    },
+    "contenteditable": {
+      "role": "AXTextArea",
+      "read_selection": "OK len=0",
+      "read_value": "OK exact 32-character common fixture",
+      "position": "OK range=0,3 verified; original selection restore verified",
+      "write_value": "OK wrote + verified; value restore and selection restore verified",
+      "write_selection": "FAIL/UNCONFIRMED: setter returned success; exact original remained after 500ms; no retry",
+      "focus": "OK",
+      "clipboard": "changeCount 1248 -> 1248"
+    }
+  },
+  "native_undo": {
+    "status": "UNVERIFIED_ENVIRONMENT; no AXValue native-undo pass/fail claim",
+    "reason": "A valid ordinary-keyboard positive control was not established. Kimi and Orca text injection could change the field but Chrome's Edit > Undo remained disabled and Cmd-Z did not change that text. System Events keystroke/key code and direct CGEvent key-code posts returned without changing the focused fixture. Therefore these drivers cannot prove that a subsequent failed Cmd-Z means the app cannot undo an AXValue write.",
+    "scope_note": "No final AXValue undo trial was counted. The earlier Chrome AX probe's own undo capability remained SKIPPED as designed."
+  },
+  "isolated_contenteditable_verification": {
+    "method": "A separate loopback page titled 'be-nice isolated contenteditable' contained exactly one input/textarea/contenteditable element: DIV#only[contenteditable=true]. WebBridge readback returned count=1, focused=true and the exact common fixture before the probe. Chrome PID 7911, focused AXTextArea; no other text control existed on the page.",
+    "excluded_attempt": "Before activating the managed tab, the probe discovered an existing WindowShare AXWebArea and reported unsupported/read-only capabilities. No write was attempted and this attempt is not counted.",
+    "probe_output": {
+      "read_selection": "OK len=0",
+      "read_value": "OK len=32",
+      "position": "OK range=0,3 verified; original selection restore verified",
+      "write_value": "OK wrote + verified; value restore verified; selection restore verified",
+      "write_selection": "FAIL/UNCONFIRMED: setter returned success; exact original remained after 500ms; no retry",
+      "focus": "OK AXTextArea",
+      "clipboard": "changeCount 1248 -> 1248"
+    },
+    "conclusion": "Independently confirms the contenteditable matrix row rather than relying on a same-role/same-fixture distinction from textarea."
+  },
+  "cleanup": "The first managed local tab was navigated back to the pristine fixture page; close_session then closed that tab (count=1). The later isolated verification recreated the same task session name with one new managed tab. At final cleanup the recreated session had no mapped tab and close_session reported zero closed; extension-wide inventory was unavailable, so a possible orphaned local test tab could not be closed programmatically. No existing user tab was used for writes or intentionally closed.",
+  "scope": "Fixed ASCII local input/textarea/contenteditable only. No Unicode/IME/rich-text formatting, cross-site, Slack, repeated undo/redo, or concurrent-edit claim."
+}

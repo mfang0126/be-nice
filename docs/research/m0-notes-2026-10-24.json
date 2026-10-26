@@ -1,0 +1,42 @@
+{
+  "record_type": "structured_observation_summary_not_raw_transcript",
+  "date": "2026-10-24",
+  "environment": "macOS 26.6.2 (25G83), Notes 4.13 (3146.141.6)",
+  "target": "operator-created dedicated note in All iCloud; AXTextArea; fixed ASCII first line (creation is an operator assertion, not a script-enforced property)",
+  "fixture": "be-nice M0 fixture: hello world.",
+  "commands": {
+    "read_only": "mac-app/.build/debug/axprobe target --app Notes --json",
+    "value_only": "mac-app/.build/debug/axprobe target --app Notes --allow-write --value-only --json",
+    "full_probe": "mac-app/.build/debug/axprobe target --app Notes --allow-write --json"
+  },
+  "read_only": {
+    "read-selection": "OK len=0",
+    "read-value": "OK len=32",
+    "focus": "OK frontmost + element identity match (AXTextArea)",
+    "clipboard": "OK changeCount before=1248 after=1248"
+  },
+  "value_only": {
+    "write-value": "OK wrote + verified; value restore verified, selection restore already original",
+    "focus": "OK",
+    "clipboard": "OK changeCount before=1248 after=1248"
+  },
+  "full_probe": {
+    "position": "OK range=0,3 verified; original selection restore verified",
+    "write-value": "OK wrote + verified; value restore verified, selection restore already original",
+    "write-selection": "OK replaced + verified; value restore verified, selection restore already original",
+    "focus": "OK",
+    "clipboard": "OK changeCount before=1248 after=1248"
+  },
+  "partial_selection": {
+    "command": "swift mac-app/partial-selection-check.swift Notes",
+    "selection": "PASS range=20,5 text=hello",
+    "setter": "AXSelectedText set AXError=0",
+    "result": "PASS exact full value be-nice M0 fixture: HELLO world.; unchanged prefix/suffix; focus PASS; clipboard unchanged"
+  },
+  "native_undo": {
+    "value": "AXValue set to be-nice M0 fixture: hello world. [be-nice-undo]; independent AX snapshot confirmed that exact replacement; one external mcp__kimi-cu__press_key cmd+z returned ok=true; subsequent independent AX snapshot restored the exact original",
+    "selected_text": "The partial-selection driver left be-nice M0 fixture: HELLO world. without auto-restore; one external mcp__kimi-cu__press_key cmd+z returned ok=true; subsequent independent AX snapshot restored the exact original"
+  },
+  "cleanup": "The dedicated test note was deleted through its More > Delete Note menu after testing; the All iCloud count returned from 279 to 278. No existing user note was deleted.",
+  "scope": "Fixed ASCII dedicated note only. Unicode, IME, rich-text style preservation, multiple notes, undo/redo sequences and concurrent edits are not tested. No real user note was used for write tests. The note was in All iCloud, so temporary fixture/replacement text could sync before undo; no sensitive text was used."
+}

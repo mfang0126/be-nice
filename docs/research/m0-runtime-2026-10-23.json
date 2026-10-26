@@ -1,0 +1,208 @@
+{
+  "phase": "final-build-20:58-AEDT",
+  "results": [
+    {
+      "argv": [
+        "mac-app/.build/debug/axprobe",
+        "check"
+      ],
+      "exitCode": 0,
+      "stdout": "AX_TRUSTED=true",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "mac-app/.build/debug/axprobe",
+        "selftest"
+      ],
+      "exitCode": 0,
+      "stdout": "SELFTEST PASS",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "mac-app/.build/debug/axprobe",
+        "target",
+        "--app",
+        "Terminal",
+        "--json"
+      ],
+      "exitCode": 0,
+      "stdout": {
+        "app": "Terminal",
+        "bundleID": "com.apple.Terminal",
+        "capabilities": [
+          {
+            "detail": "BLOCKED_EXCLUDED_APP: app is on the Terminal exclusion list",
+            "name": "read-selection",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "BLOCKED_EXCLUDED_APP: app is on the Terminal exclusion list",
+            "name": "read-value",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "BLOCKED_EXCLUDED_APP: app is on the Terminal exclusion list",
+            "name": "position",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "BLOCKED_EXCLUDED_APP: app is on the Terminal exclusion list",
+            "name": "write-value",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "BLOCKED_EXCLUDED_APP: app is on the Terminal exclusion list",
+            "name": "write-selection",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "not executed; press Cmd-Z manually and verify restore",
+            "name": "undo",
+            "result": "SKIPPED"
+          },
+          {
+            "detail": "target not discovered (blocked before AX read)",
+            "name": "focus",
+            "result": "SKIPPED"
+          },
+          {
+            "detail": "not accessed by probe",
+            "name": "clipboard",
+            "result": "SKIPPED"
+          }
+        ],
+        "mode": "read-only",
+        "pid": 98417,
+        "role": "?",
+        "title": ""
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "mac-app/.build/debug/axprobe",
+        "target",
+        "--app",
+        "TextEdit",
+        "--allow-write",
+        "--json"
+      ],
+      "exitCode": 4,
+      "stdout": {
+        "app": "TextEdit",
+        "bundleID": "com.apple.TextEdit",
+        "capabilities": [
+          {
+            "detail": "non-text target role=AXApplication",
+            "name": "read-selection",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "non-text target role=AXApplication",
+            "name": "read-value",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "non-text target role=AXApplication",
+            "name": "position",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "non-text target role=AXApplication",
+            "name": "write-value",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "non-text target role=AXApplication",
+            "name": "write-selection",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "not executed; press Cmd-Z manually and verify restore",
+            "name": "undo",
+            "result": "SKIPPED"
+          },
+          {
+            "detail": "frontmost=false identity=true focused=AXApplication TextEdit",
+            "name": "focus",
+            "result": "FAIL"
+          },
+          {
+            "detail": "not accessed by probe",
+            "name": "clipboard",
+            "result": "SKIPPED"
+          }
+        ],
+        "mode": "write",
+        "pid": 35240,
+        "role": "AXApplication",
+        "title": "TextEdit"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "mac-app/.build/debug/axprobe",
+        "target",
+        "--app",
+        "Electron",
+        "--allow-write",
+        "--json"
+      ],
+      "exitCode": 0,
+      "stdout": {
+        "app": "Electron",
+        "bundleID": "com.github.Electron",
+        "capabilities": [
+          {
+            "detail": "AXFocusedUIElement unavailable",
+            "name": "read-selection",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "AXFocusedUIElement unavailable",
+            "name": "read-value",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "AXFocusedUIElement unavailable",
+            "name": "position",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "AXFocusedUIElement unavailable",
+            "name": "write-value",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "AXFocusedUIElement unavailable",
+            "name": "write-selection",
+            "result": "BLOCKED"
+          },
+          {
+            "detail": "not executed; press Cmd-Z manually and verify restore",
+            "name": "undo",
+            "result": "SKIPPED"
+          },
+          {
+            "detail": "target not discovered (blocked before AX read)",
+            "name": "focus",
+            "result": "SKIPPED"
+          },
+          {
+            "detail": "not accessed by probe",
+            "name": "clipboard",
+            "result": "SKIPPED"
+          }
+        ],
+        "mode": "write",
+        "pid": 98962,
+        "role": "?",
+        "title": ""
+      },
+      "stderr": ""
+    }
+  ]
+}

@@ -1,0 +1,164 @@
+[
+  {
+    "control": "input",
+    "exitCode": 0,
+    "report": {
+      "app": "Electron",
+      "bundleID": "com.github.Electron",
+      "capabilities": [
+        {
+          "detail": "len=0",
+          "name": "read-selection",
+          "result": "OK"
+        },
+        {
+          "detail": "len=32",
+          "name": "read-value",
+          "result": "OK"
+        },
+        {
+          "detail": "value-only test",
+          "name": "position",
+          "result": "SKIPPED"
+        },
+        {
+          "detail": "wrote + verified; value restore verified, selection restore already original",
+          "name": "write-value",
+          "result": "OK"
+        },
+        {
+          "detail": "value-only test",
+          "name": "write-selection",
+          "result": "SKIPPED"
+        },
+        {
+          "detail": "not executed; press Cmd-Z manually and verify restore",
+          "name": "undo",
+          "result": "SKIPPED"
+        },
+        {
+          "detail": "frontmost + element identity match (AXTextField)",
+          "name": "focus",
+          "result": "OK"
+        },
+        {
+          "detail": "changeCount before=1245 after=1245",
+          "name": "clipboard",
+          "result": "OK"
+        }
+      ],
+      "mode": "write",
+      "pid": 98962,
+      "role": "AXTextField",
+      "title": ""
+    }
+  },
+  {
+    "control": "textarea",
+    "exitCode": 0,
+    "report": {
+      "app": "Electron",
+      "bundleID": "com.github.Electron",
+      "capabilities": [
+        {
+          "detail": "len=0",
+          "name": "read-selection",
+          "result": "OK"
+        },
+        {
+          "detail": "len=32",
+          "name": "read-value",
+          "result": "OK"
+        },
+        {
+          "detail": "value-only test",
+          "name": "position",
+          "result": "SKIPPED"
+        },
+        {
+          "detail": "wrote + verified; value restore verified, selection restore already original",
+          "name": "write-value",
+          "result": "OK"
+        },
+        {
+          "detail": "value-only test",
+          "name": "write-selection",
+          "result": "SKIPPED"
+        },
+        {
+          "detail": "not executed; press Cmd-Z manually and verify restore",
+          "name": "undo",
+          "result": "SKIPPED"
+        },
+        {
+          "detail": "frontmost + element identity match (AXTextArea)",
+          "name": "focus",
+          "result": "OK"
+        },
+        {
+          "detail": "changeCount before=1245 after=1245",
+          "name": "clipboard",
+          "result": "OK"
+        }
+      ],
+      "mode": "write",
+      "pid": 98962,
+      "role": "AXTextArea",
+      "title": ""
+    }
+  },
+  {
+    "control": "contenteditable",
+    "exitCode": 0,
+    "report": {
+      "app": "Electron",
+      "bundleID": "com.github.Electron",
+      "capabilities": [
+        {
+          "detail": "len=0",
+          "name": "read-selection",
+          "result": "OK"
+        },
+        {
+          "detail": "len=32",
+          "name": "read-value",
+          "result": "OK"
+        },
+        {
+          "detail": "value-only test",
+          "name": "position",
+          "result": "SKIPPED"
+        },
+        {
+          "detail": "wrote + verified; value restore verified, selection restore already original",
+          "name": "write-value",
+          "result": "OK"
+        },
+        {
+          "detail": "value-only test",
+          "name": "write-selection",
+          "result": "SKIPPED"
+        },
+        {
+          "detail": "not executed; press Cmd-Z manually and verify restore",
+          "name": "undo",
+          "result": "SKIPPED"
+        },
+        {
+          "detail": "frontmost + element identity match (AXTextArea)",
+          "name": "focus",
+          "result": "OK"
+        },
+        {
+          "detail": "changeCount before=1245 after=1245",
+          "name": "clipboard",
+          "result": "OK"
+        }
+      ],
+      "mode": "write",
+      "pid": 98962,
+      "role": "AXTextArea",
+      "title": ""
+    }
+  }
+]

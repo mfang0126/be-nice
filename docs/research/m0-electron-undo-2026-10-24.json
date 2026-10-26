@@ -1,0 +1,68 @@
+{
+  "record_type": "structured_observation_summary_not_raw_transcript",
+  "date": "2026-10-24",
+  "environment": {
+    "macos": "26.6.2 (25G83)",
+    "electron": "33.4.11",
+    "target": "current-worktree dev-electron-test; fresh process for each final control",
+    "final_trial_pids": {
+      "input_and_positive_control": 98585,
+      "textarea": 11153,
+      "contenteditable": 19066
+    }
+  },
+  "fixtures": {
+    "input": "be-nice M0 fixture: hello world. [input]",
+    "textarea": "be-nice M0 fixture: hello world. [textarea]",
+    "contenteditable": "be-nice M0 fixture: hello world. [contenteditable]"
+  },
+  "replacement_suffix": " [be-nice-undo]",
+  "method": [
+    "Start a fresh target process and focus exactly one disposable control with a control-unique fixture.",
+    "Run electron-native-undo-check.swift <control> --write-only. The driver gates bundle, frontmost PID, window title, focused role, element identity and exact original, writes AXValue once, and requires exact replacement readback.",
+    "Send one Cmd-Z through mcp__kimi-cu__press_key.",
+    "Run the independent --verify-original process. It checks role and the control-unique value with bounded read-only waiting up to 2 seconds; no write or auto-restore is performed.",
+    "Restart the target process before the next control to eliminate prior undo history."
+  ],
+  "positive_control": {
+    "purpose": "Prove the external Cmd-Z path is delivered and effective inside this Electron target, independent of AXValue writes.",
+    "action": "External keyboard typing inserted X at the start of the input fixture; AX readback observed Xbe-nice M0 fixture: hello world. [input]. One external Cmd-Z followed.",
+    "result": "PASS: independent AX readback restored be-nice M0 fixture: hello world. [input]."
+  },
+  "results": [
+    {
+      "control": "input",
+      "pid": 98585,
+      "write": "AXError=0; exact replacement read back; READY",
+      "external_action": "one cmd+z returned ok=true",
+      "verification_exit": 1,
+      "verification_output": "STOP: undo UNCONFIRMED; current=be-nice M0 fixture: hello world. [input] [be-nice-undo]",
+      "result": "FAIL: exact replacement remained after bounded verification"
+    },
+    {
+      "control": "textarea",
+      "pid": 11153,
+      "write": "AXError=0; exact replacement read back; READY",
+      "external_action": "one cmd+z returned ok=true",
+      "verification_exit": 1,
+      "verification_output": "STOP: undo UNCONFIRMED; current=be-nice M0 fixture: hello world. [textarea] [be-nice-undo]",
+      "result": "FAIL: exact replacement remained after bounded verification"
+    },
+    {
+      "control": "contenteditable",
+      "pid": 19066,
+      "write": "AXError=0; exact replacement read back; READY",
+      "external_action": "one cmd+z returned ok=true",
+      "verification_exit": 1,
+      "verification_output": "STOP: undo UNCONFIRMED; current=be-nice M0 fixture: hello world. [contenteditable] [be-nice-undo]",
+      "result": "FAIL: exact replacement remained after bounded verification"
+    }
+  ],
+  "cleanup": "The contenteditable replacement was explicitly restored after a fresh AX snapshot; all three controls independently read back their exact unique fixtures. Restoration is cleanup, not undo evidence.",
+  "superseded_trials": [
+    "Earlier common-fixture trials without an Electron keyboard positive control also failed, but are superseded by the final fresh-process, unique-fixture, bounded-wait trials above.",
+    "An earlier non-isolated textarea attempt undid a previous input setup action and was discarded.",
+    "An old Electron instance loaded files from the main checkout; all final trials used newly launched current-worktree processes."
+  ],
+  "scope": "Only AXValue writes to fixed ASCII fixtures in this Electron test target. The positive control supports Cmd-Z delivery; the three failures show those AXValue writes were not natively undone in these trials. Does not test SelectedText undo, Slack/VS Code, Unicode/IME/rich-text formatting, redo or repeated undo. Product-managed original-text restoration remains required and is not evidence of native undo support."
+}

@@ -1,9 +1,11 @@
 # engine
 
-Core of be-nice: prompt assembly + model provider abstraction.
+Planned component; not implemented. Scope and milestones come only from [PLAN.md](../PLAN.md).
 
-- `providers/` — LocalProvider (llama.cpp + GGUF), RemoteProvider (BYO API key). Local-first; never auto-fallback to remote.
-- `prompt/` — style guide + minimal-edit rephrase instructions; original text is data, never instructions.
-- `style/` — structured, editable style profile (zh/en, colleague/customer).
+- M1 model access: one OpenAI-compatible `/v1/chat/completions` client, configured with base URL, API key, and model. Local servers are optional endpoints; no separate embedded LocalProvider or automatic fallback is planned for MVP.
+- Prompt assembly: minimal-edit rephrase instructions; original text is data, never instructions.
+- M2 style: structured, editable profile (zh/en, colleague/customer).
 
-Acceptance: minimal edit, no new facts, preserve names/numbers/negation/commitment strength, return original when no change needed.
+Acceptance: minimal edits, no new facts, preserve names/numbers/negation/commitment strength; unchanged text may remain unchanged. Empty, truncated, or refused output must not overwrite input.
+
+Current implementation and handover: [HANDOVER.md](../HANDOVER.md).
