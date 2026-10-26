@@ -1,7 +1,7 @@
 # be-nice 当前状态
 
 > 每次更新**覆盖重写**，只写当前事实，不追加历史。历史见 git log 与 [docs/archive/](docs/archive/)。
-> 更新：2026-10-27 00:15 AEDT
+> 更新：2026-10-27 00:35 AEDT
 
 ## 阶段：S0 Slack 能力探测（进行中）
 
@@ -25,7 +25,7 @@
 ## 开发环境
 
 - 开发版固定路径 `~/Applications/be-nice Development.app`，Bundle ID `com.benice.menubar.development`，本地签名证书指纹 `D933388477455C8C62344293E483E625F4B7B194`（不得重新生成）。
-- 10-26 00:03 用户已授予 Accessibility；重建后授权是否保留**未验证**。使用前跑 `python3 -I mac-app/scripts/debug-status.py`（0=已授权，2=未授权，1=无法确认）。
+- 10-26 00:03 用户已授予 Accessibility；10-27 00:30 重建安装新版（并排对比窗口）后，运行中的 App 报告 `accessibilityTrusted: true`，**重建后授权保留已验证**。使用前跑 `python3 -I mac-app/scripts/debug-status.py`（0=已授权，2=未授权，1=无法确认）。
 - App 里已配置真实 DeepInfra endpoint/model：测试不得覆盖用户配置或 Keychain。
 
 ## 下一步
