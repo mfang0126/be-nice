@@ -30,6 +30,7 @@ sh mac-app/scripts/setup-dev-signing.sh --setup     # one time; already done on 
 sh mac-app/scripts/build-app.sh debug --install     # quit the running dev app first
 open "$HOME/Applications/be-nice Development.app"
 python3 -I mac-app/scripts/debug-status.py          # 0 granted, 2 not granted, 1 unknown
+sh mac-app/scripts/configure-dev-model.sh           # dev model = Hermes DeepInfra DeepSeek (key from ~/.hermes/.env)
 ```
 
 - Fixed identity: bundle ID `com.benice.menubar.development`, path `~/Applications/be-nice Development.app`, one persistent local certificate whose key lives only in the login keychain (codesign access, non-extractable). Never regenerate it: a new identity needs a new Accessibility grant.

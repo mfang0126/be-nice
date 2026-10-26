@@ -26,7 +26,7 @@
 
 - 开发版固定路径 `~/Applications/be-nice Development.app`，Bundle ID `com.benice.menubar.development`，本地签名证书指纹 `D933388477455C8C62344293E483E625F4B7B194`（不得重新生成）。
 - 10-26 00:03 用户已授予 Accessibility；10-27 00:30 重建安装新版（并排对比窗口）后，运行中的 App 报告 `accessibilityTrusted: true`，**重建后授权保留已验证**。使用前跑 `python3 -I mac-app/scripts/debug-status.py`（0=已授权，2=未授权，1=无法确认）。
-- App 里已配置真实 DeepInfra endpoint/model：测试不得覆盖用户配置或 Keychain。
+- 开发版模型配置：DeepInfra `https://api.deepinfra.com/v1/openai` + `deepseek-ai/DeepSeek-V4.1-Flash`，密钥取自 `~/.hermes/.env`。丢失时运行 `sh mac-app/scripts/configure-dev-model.sh` 恢复（用户 10-27 指定为默认）。测试不得用别的值覆盖。
 
 ## 下一步
 
