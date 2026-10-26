@@ -192,8 +192,14 @@ public protocol TextTargetAccess: Sendable {
     func setValue(_ text: String, on element: TargetElement) -> Int32
     func setSelectedText(_ text: String, on element: TargetElement) -> Int32
     func setSelectedRange(_ range: NSRange, on element: TargetElement) -> Int32
+    /// Sets AXFocused on this exact element (used to hand focus back to the captured Slack composer).
+    func focus(_ element: TargetElement) -> Int32
     func uptime() -> TimeInterval
     func sleep(_ seconds: TimeInterval)
+}
+
+extension TextTargetAccess {
+    public func focus(_ element: TargetElement) -> Int32 { -25205 }  // kAXErrorCannotComplete
 }
 
 public protocol SuggestionProviding: Sendable {
@@ -749,6 +755,17 @@ public actor WriteBackController {
                                        conversationTitle: conversationTitle))
     }
 
+    /// Slack (Electron) hands focus back to its web area, not the composer, after
+    /// be-nice's window closes. Only after the same-app and same-conversation checks
+    /// pass, re-focus the exact captured element; every later check still applies.
+    private func refocusSlackComposer(_ target: CapturedTarget) {
+        guard target.conversationTitle != nil,
+              let focused = access.focusedElement(pid: target.pid),
+              !access.sameElement(focused, target.element) else { return }
+        _ = access.focus(target.element)
+        access.sleep(0.15)
+    }
+
     /// Recheck immediately before apply (and before offering a preview).
     private func recheck(_ target: CapturedTarget) -> WriteBackFailure? {
         if access.isSecureInputEnabled() { return .secureInput }
@@ -767,6 +784,7 @@ public actor WriteBackController {
            access.focusedWindowTitle(pid: target.pid) != title {
             return .targetChanged(.focusChanged)
         }
+        refocusSlackComposer(target)
         guard let focused = access.focusedElement(pid: target.pid),
               access.sameElement(focused, target.element) else {
             return .targetChanged(.focusChanged)
@@ -802,6 +820,7 @@ public actor WriteBackController {
            access.focusedWindowTitle(pid: record.target.pid) != title {
             return .failure(.targetChanged(.focusChanged))
         }
+        refocusSlackComposer(record.target)
         guard let focused = access.focusedElement(pid: record.target.pid),
               access.sameElement(focused, record.target.element) else {
             return .failure(.targetChanged(.focusChanged))
@@ -931,6 +950,10 @@ public struct SystemTextTargetAccess: TextTargetAccess {
 
     public func setValue(_ text: String, on element: TargetElement) -> Int32 {
         setAttribute(element, axValueAttribute, text as CFTypeRef)
+    }
+
+    public func focus(_ element: TargetElement) -> Int32 {
+        setAttribute(element, "AXFocused", kCFBooleanTrue)
     }
 
     public func setSelectedText(_ text: String, on element: TargetElement) -> Int32 {
