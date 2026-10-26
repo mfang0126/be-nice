@@ -51,6 +51,7 @@ actor WriteBackController {
 @MainActor final class Preview {
     var copyOnly = false
     func suspendForApply() {}
+    func setBusy(_ busy: Bool) {}
     func resumeCopyOnly(reason: String) { copyOnly = true }
     func dismiss() {}
 }

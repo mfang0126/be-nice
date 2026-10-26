@@ -67,7 +67,10 @@ final class OptimizerController {
     }
 
     private func apply(_ text: String, token: UInt64) {
-        guard generation == token, !busy, let core = pending, let target = pendingTarget else { return }
+        guard generation == token, !busy, let core = pending, let target = pendingTarget else {
+            previewWindow.setBusy(false)  // the window went busy on submit; never leave it stuck
+            return
+        }
         busy = true
         previewWindow.suspendForApply()
         Task {

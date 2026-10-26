@@ -1,5 +1,24 @@
 import AppKit
 
+private func rgb(_ hex: UInt32, alpha: CGFloat = 1) -> NSColor {
+    NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
+}
+
+/// Design B (docs/design/rewrite-directions/project/Compare.dc.html): fixed light palette, so the panel
+/// is pinned to Aqua and stays readable in dark mode.
+private enum Palette {
+    static let accent = rgb(0x0A64D6)
+    static let body = rgb(0xF5F5F7)
+    static let line = rgb(0xE4E4E7)
+    static let cardLine = rgb(0xE0E0E5)
+    static let primaryText = rgb(0x1D1D1F)
+    static let secondaryText = rgb(0x3A3A3C)
+    static let hint = rgb(0x6B6B70)
+    static let warning = rgb(0xB3261E)
+    static let editing = rgb(0xF0F6FF)
+}
+
 @MainActor
 private final class RewriteWindow: NSWindow {
     var handleKey: ((NSEvent) -> Bool)?
@@ -15,39 +34,200 @@ private final class RewriteWindow: NSWindow {
     override func close() { handleClose?() }
 }
 
+/// Tab leaves the text instead of inserting a tab character, so keyboard focus can reach the buttons.
 @MainActor
-private final class RewriteOptionButton: NSButton {
+private final class RewriteTextView: NSTextView {
+    override func insertTab(_ sender: Any?) { window?.selectNextKeyView(sender) }
+    override func insertBacktab(_ sender: Any?) { window?.selectPreviousKeyView(sender) }
+}
+
+@MainActor
+private final class RewriteButton: NSButton {
+    private let primary: Bool
+    private var restyling = false
+
+    init(title: String, primary: Bool) {
+        self.primary = primary
+        super.init(frame: .zero)
+        self.title = title
+        isBordered = false
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        layer?.backgroundColor = (primary ? Palette.accent : .white).cgColor
+        if !primary {
+            layer?.borderWidth = 1
+            layer?.borderColor = rgb(0xD1D1D6).cgColor
+        }
+        heightAnchor.constraint(equalToConstant: 36).isActive = true
+        restyle()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override var title: String { didSet { restyle() } }
+    override var isEnabled: Bool { didSet { alphaValue = isEnabled ? 1 : 0.45 } }
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: super.intrinsicContentSize.width + (primary ? 40 : 36), height: 36)
+    }
+    override func drawFocusRingMask() { NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill() }
+    override var focusRingMaskBounds: NSRect { bounds }
+
+    private func restyle() {
+        guard !restyling else { return }
+        restyling = true
+        defer { restyling = false }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        attributedTitle = NSAttributedString(string: title, attributes: [
+            .font: NSFont.systemFont(ofSize: 14, weight: primary ? .semibold : .regular),
+            .foregroundColor: primary ? NSColor.white : Palette.primaryText,
+            .paragraphStyle: paragraph])
+        setAccessibilityLabel(title)
+    }
+}
+
+/// One candidate. Clicking anywhere on an unselected card selects it; the selected card's text is
+/// the editor, so per-card drafts live in `text` itself.
+@MainActor
+private final class RewriteCard: NSView {
+    let text = RewriteTextView()
+    let scroll = NSScrollView()
+    var onPick: (() -> Void)?
+    private let radio = NSView()
+    private let name: String
+    private var chosen = false
+    private var enabled = true
+
+    init(name: String, hint: String, body: String) {
+        self.name = name
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 14
+        layer?.backgroundColor = NSColor.white.cgColor
+        radio.wantsLayer = true
+        radio.layer?.cornerRadius = 9
+        radio.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([radio.widthAnchor.constraint(equalToConstant: 18),
+                                     radio.heightAnchor.constraint(equalToConstant: 18)])
+        let title = NSTextField(labelWithString: name)
+        title.font = .systemFont(ofSize: 14, weight: .bold)
+        title.textColor = Palette.primaryText
+        title.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let hintLabel = NSTextField(wrappingLabelWithString: hint)
+        hintLabel.font = .systemFont(ofSize: 12)
+        hintLabel.textColor = Palette.hint
+        hintLabel.isSelectable = false
+        hintLabel.alignment = .left
+        text.isRichText = false
+        text.font = .systemFont(ofSize: 16)
+        text.textColor = Palette.secondaryText
+        text.textContainerInset = NSSize(width: 10, height: 10)
+        text.isVerticallyResizable = true
+        text.isHorizontallyResizable = false
+        text.autoresizingMask = [.width]
+        text.textContainer?.widthTracksTextView = true
+        text.string = body
+        scroll.documentView = text
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        scroll.wantsLayer = true
+        scroll.layer?.cornerRadius = 8
+        let titleRow = NSStackView(views: [title, radio])
+        let stack = NSStackView(views: [titleRow, hintLabel])
+        stack.orientation = .vertical
+        stack.alignment = .width
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        for view in [titleRow, hintLabel] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(scroll)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 16),
+            // The scroll view reaches 10 pt past the title column so the text (inset 10) lines up with it.
+            scroll.topAnchor.constraint(equalTo: stack.bottomAnchor, constant: 6),
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            scroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            scroll.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10)])
+        setAccessibilityRole(.radioButton)
+        setAccessibilityLabel("\(name)，\(hint)")
+        focusRingType = .exterior
+        apply(chosen: false, enabled: true)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    func apply(chosen: Bool, enabled: Bool) {
+        let changed = self.chosen != chosen
+        self.chosen = chosen
+        self.enabled = enabled
+        if changed { NSAccessibility.post(element: self, notification: .valueChanged) }
+        layer?.borderWidth = chosen ? 2 : 1
+        layer?.borderColor = (chosen ? Palette.accent : Palette.cardLine).cgColor
+        radio.layer?.borderWidth = chosen ? 5 : 1.5
+        radio.layer?.borderColor = (chosen ? Palette.accent : rgb(0xB8B8BE)).cgColor
+        radio.layer?.backgroundColor = NSColor.white.cgColor
+        text.isEditable = chosen && enabled
+        text.isSelectable = chosen
+        text.drawsBackground = chosen
+        text.backgroundColor = Palette.editing
+        text.textColor = chosen ? Palette.primaryText : Palette.secondaryText
+        text.setAccessibilityLabel(chosen ? "编辑改写全文" : "\(name)全文")
+        alphaValue = enabled ? 1 : 0.7
+    }
+
+    override var acceptsFirstResponder: Bool { enabled }
+    override func drawFocusRingMask() { NSBezierPath(roundedRect: bounds, xRadius: 14, yRadius: 14).fill() }
+    override var focusRingMaskBounds: NSRect { bounds }
+    /// Unselected cards swallow every click (and scroll) so the whole card acts as one button.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        super.hitTest(point) == nil ? nil : self
+        let hit = super.hitTest(point)
+        return hit != nil && !chosen ? self : hit
+    }
+    override func mouseDown(with event: NSEvent) { if enabled { onPick?() } }
+    override func scrollWheel(with event: NSEvent) { scroll.scrollWheel(with: event) }
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 49, enabled { onPick?() } else { super.keyDown(with: event) }
+    }
+    override func isAccessibilitySelected() -> Bool { chosen }
+    override func accessibilityValue() -> Any? { chosen ? 1 : 0 }
+    override func accessibilityPerformPress() -> Bool {
+        guard enabled else { return false }
+        onPick?()
+        return true
     }
 }
 
 @MainActor
 final class RewriteWindowController: NSWindowController, NSWindowDelegate {
-    private let originalView = RewriteWindowController.textView(editable: false)
-    private let editor = RewriteWindowController.textView(editable: true)
-    private let heading = NSTextField(labelWithString: "")
-    private let styleLabel = NSTextField(labelWithString: "")
-    private let status = RewriteWindowController.textView(editable: false)
-    private let choices = NSStackView()
-    private let closeButton = NSButton(title: "关闭", target: nil, action: nil)
-    private let cancelButton = NSButton(title: "取消", target: nil, action: nil)
-    private let backButton = NSButton(title: "返回选项", target: nil, action: nil)
-    private let openButton = NSButton(title: "查看全文 ↵", target: nil, action: nil)
-    private let copyButton = NSButton(title: "复制改写", target: nil, action: nil)
+    private let originalView = RewriteWindowController.staticTextView()
+    private let status = RewriteWindowController.staticTextView()
+    private let cancelButton = RewriteButton(title: "取消", primary: false)
+    private let primaryButton = RewriteButton(title: "替换", primary: true)
+    private let panel = NSView()
+    private let cardsRow = NSStackView()
+    // Reserved for the single-line "想怎么改" instruction field; hidden and unwired (PLAN「试用版之后第一项」).
+    private let instructionSlot = NSView()
+    private let instructionField = NSTextField()
+    private var originalHeight: NSLayoutConstraint!
+    private var bodyHeight: NSLayoutConstraint!
+    private var bodyContainer: NSView!
+    private var cards: [RewriteCard] = []
     private let presentsWindows: Bool
     private let copyText: (String) -> Bool
     private var copyOnlyReason: String?
     private let copyOnlyHelp = "仅可查看、编辑和复制，不能直接替换。请返回目标草稿重新生成。"
-    private let submitButton = NSButton(title: "确认替换 ⌘↵", target: nil, action: nil)
-    private var editorScroll: NSScrollView!
-    private var originalHeight: NSLayoutConstraint!
-    private var editorHeight: NSLayoutConstraint!
-    private var optionButtons: [NSButton] = []
+    private let hintText = "←→ 切换　所选可直接修改　⌘↩ 替换　esc 关闭 · 替换后可撤销，不会发送"
     private var options: [RewriteOption] = []
-    private var drafts: [String] = []
     private var selected = 0
-    private var editing = false
+    private var notice: String?
+    private var noticeIsError = false
     private var busy = false
     private var active = false
     private var submitAction: ((String) -> Void)?
@@ -62,7 +242,9 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         let window = RewriteWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.level = .floating
-        window.backgroundColor = .windowBackgroundColor
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
         window.collectionBehavior = [.fullScreenAuxiliary]
         super.init(window: window)
         window.delegate = self
@@ -79,62 +261,23 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         guard !busy else { return }
         self.copyOnlyReason = copyOnlyReason
         self.options = Array(options.prefix(3))
-        drafts = self.options.map(\.text)
         selected = 0
-        editing = false
+        notice = nil
         active = true
         submitAction = onSubmit
         cancelAction = onCancel
-        heading.stringValue = "Rewrite · \(appName)"
+        panel.setAccessibilityLabel("Rewrite · \(appName)")
         originalView.string = original
-        status.string = "↑ ↓ 选择 · Enter 查看全文 · Esc 取消"
-        for view in choices.arrangedSubviews { choices.removeArrangedSubview(view); view.removeFromSuperview() }
-        optionButtons = self.options.enumerated().map { index, option in
-            let button = RewriteOptionButton(title: "", target: self, action: #selector(openOption(_:)))
-            let label = NSTextField(labelWithString: Self.label(option.style))
-            label.font = .systemFont(ofSize: 12, weight: .semibold)
-            let preview = NSTextField(wrappingLabelWithString: option.text)
-            preview.maximumNumberOfLines = 2
-            preview.lineBreakMode = .byTruncatingTail
-            preview.font = .systemFont(ofSize: 16)
-            let text = NSStackView(views: [label, preview])
-            text.orientation = .vertical
-            text.alignment = .leading
-            text.spacing = 4
-            text.translatesAutoresizingMaskIntoConstraints = false
-            button.addSubview(text)
-            NSLayoutConstraint.activate([
-                text.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 12),
-                text.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -12),
-                text.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-                preview.widthAnchor.constraint(equalTo: text.widthAnchor)
-            ])
-            button.tag = index
-            button.identifier = NSUserInterfaceItemIdentifier("option-\(index)")
-            button.bezelStyle = .regularSquare
-            button.setButtonType(.pushOnPushOff)
-            button.alignment = .left
-            button.font = .systemFont(ofSize: 16)
-            button.cell?.wraps = true
-            button.cell?.truncatesLastVisibleLine = true
-            button.heightAnchor.constraint(equalToConstant: 78).isActive = true
-            button.setAccessibilityLabel("\(Self.label(option.style))，查看全文")
-            button.setAccessibilityHelp(option.text)
-            choices.addArrangedSubview(button)
-            button.widthAnchor.constraint(equalTo: choices.widthAnchor).isActive = true
-            return button
-        }
-        originalHeight.constant = min(130, max(48, screenFrame.height * 0.16))
-        editorHeight.constant = min(300, max(80, screenFrame.height * 0.30))
+        rebuildCards()
+        sizePanel(original: original, screenFrame: screenFrame)
         updateControls()
         window?.contentView?.layoutSubtreeIfNeeded()
         window?.setFrame(screenFrame, display: presentsWindows)
         if self.options.isEmpty { showError("没有可用的改写，请关闭后重试。") }
         guard presentsWindows else { return }
-        if #available(macOS 14.0, *) { NSApp.activate() }
-        else { NSApp.activate(ignoringOtherApps: true) }
+        activateApp()
         window?.makeKeyAndOrderFront(nil)
-        window?.makeFirstResponder(optionButtons.first ?? cancelButton)
+        window?.makeFirstResponder(cards.first ?? cancelButton)
     }
 
     func suspendForApply() {
@@ -146,14 +289,13 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         copyOnlyReason = reason
         setBusy(false)
         guard presentsWindows else { return }
-        if #available(macOS 14.0, *) { NSApp.activate() }
-        else { NSApp.activate(ignoringOtherApps: true) }
+        activateApp()
         window?.makeKeyAndOrderFront(nil)
-        if presentsWindows { window?.makeFirstResponder(editor) }
+        window?.makeFirstResponder(cards.indices.contains(selected) ? cards[selected].text : cancelButton)
     }
 
     func showError(_ message: String) {
-        status.string = message
+        setNotice(message, isError: true)
         guard presentsWindows else { return }
         NSAccessibility.post(element: status, notification: .announcementRequested,
                              userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue])
@@ -161,7 +303,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
 
     func setBusy(_ busy: Bool) {
         self.busy = busy
-        status.string = busy ? "正在确认并替换，请稍候…" : "可编辑 · ⌘Enter 确认替换"
+        notice = nil
         updateControls()
     }
 
@@ -176,70 +318,69 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
 
     func windowShouldClose(_ sender: NSWindow) -> Bool { cancel(); return false }
 
+    private func activateApp() {
+        if #available(macOS 14.0, *) { NSApp.activate() }
+        else { NSApp.activate(ignoringOtherApps: true) }
+    }
+
+    private func setNotice(_ text: String?, isError: Bool) {
+        notice = text
+        noticeIsError = isError
+        updateControls()
+    }
+
     private func updateControls() {
-        for (index, button) in optionButtons.enumerated() {
-            button.state = index == selected ? .on : .off
-            button.isEnabled = !busy && active
+        let usable = active && !busy
+        for (index, card) in cards.enumerated() {
+            card.apply(chosen: index == selected, enabled: usable)
+            card.text.identifier = NSUserInterfaceItemIdentifier(index == selected ? "rewrite-editor" : "rewrite-text-\(index)")
         }
-        choices.isHidden = editing
-        editorScroll.isHidden = !editing
-        styleLabel.superview?.isHidden = !editing
-        backButton.isHidden = !editing
-        submitButton.isHidden = !editing
-        copyButton.isHidden = !editing
-        openButton.isHidden = editing
-        for button in [closeButton, cancelButton, backButton, openButton, submitButton, copyButton] {
-            button.isEnabled = active && !busy
+        cancelButton.isEnabled = usable
+        if copyOnlyReason != nil {
+            primaryButton.title = "复制改写"
+        } else {
+            let name = options.indices.contains(selected) ? Self.label(options[selected].style) : ""
+            primaryButton.title = name.isEmpty ? "替换" : "用「\(name)」替换"
         }
-        submitButton.isEnabled = active && !busy && copyOnlyReason == nil
-        if !busy, let copyOnlyReason { status.string = "\(copyOnlyReason) \(copyOnlyHelp)" }
-        openButton.isEnabled = active && !busy && !options.isEmpty
-        editor.isEditable = active && !busy
+        primaryButton.isEnabled = usable && !options.isEmpty
+        var parts: [String] = []
+        if busy { parts.append("正在确认并替换，请稍候…") }
+        else if let notice { parts.append(notice) }
+        if let copyOnlyReason, !busy { parts.append("\(copyOnlyReason) \(copyOnlyHelp)") }
+        let emphasized = !busy && (copyOnlyReason != nil || (notice != nil && noticeIsError))
+        status.string = parts.isEmpty ? hintText : parts.joined(separator: " ")
+        status.textColor = emphasized ? Palette.warning : Palette.hint
     }
 
-    @objc private func openOption(_ sender: NSButton) {
-        guard active, !busy, options.indices.contains(sender.tag) else { return }
-        selected = sender.tag
-        openSelected()
+    private func select(_ index: Int, focusEditor: Bool) {
+        guard active, !busy, cards.indices.contains(index) else { return }
+        selected = index
+        setNotice(nil, isError: false)
+        guard presentsWindows else { return }
+        window?.makeFirstResponder(focusEditor ? cards[index].text : cards[index])
     }
 
-    @objc private func openSelected() {
-        guard active, !busy, !editing, drafts.indices.contains(selected) else { return }
-        editing = true
-        editor.string = drafts[selected]
-        styleLabel.stringValue = Self.label(options[selected].style)
-        status.string = "可编辑 · ⌘Enter 确认替换 · 替换后仅可撤销本次修改"
-        updateControls()
-        if presentsWindows { window?.makeFirstResponder(editor) }
+    @objc private func primaryAction() {
+        if copyOnlyReason == nil { submit() } else { copyCandidate() }
     }
 
-    @objc private func back() {
-        guard active, !busy, editing else { return }
-        drafts[selected] = editor.string
-        editing = false
-        status.string = "↑ ↓ 选择 · Enter 查看全文 · Esc 取消"
-        updateControls()
-        if presentsWindows { window?.makeFirstResponder(optionButtons[selected]) }
-    }
-
+    /// The only path that reports text to the caller; copy-only mode can never reach it.
     @objc private func submit() {
-        guard active, !busy, editing, copyOnlyReason == nil else { return }
-        let text = editor.string
+        guard active, !busy, copyOnlyReason == nil, cards.indices.contains(selected) else { return }
+        let text = cards[selected].text.string
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             showError("请输入改写内容。")
-            if presentsWindows { window?.makeFirstResponder(editor) }
+            if presentsWindows { window?.makeFirstResponder(cards[selected].text) }
             return
         }
-        drafts[selected] = text
         setBusy(true)
         submitAction?(text)
     }
 
-    @objc private func copyCandidate() {
-        guard active, !busy, editing else { return }
-        drafts[selected] = editor.string
-        showError(copyText(editor.string) ? "已复制改写。" : "复制失败，请重试。")
-        if let copyOnlyReason { status.string += " \(copyOnlyReason) \(copyOnlyHelp)" }
+    private func copyCandidate() {
+        guard active, !busy, cards.indices.contains(selected) else { return }
+        let copied = copyText(cards[selected].text.string)
+        setNotice(copied ? "已复制改写。" : "复制失败，请重试。", isError: !copied)
     }
 
     @objc private func cancel() {
@@ -249,114 +390,219 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         callback?()
     }
 
+    /// Esc closes, ⌘↩ replaces. ←/→ switch cards and Return enters the editor only while focus is NOT
+    /// inside the editor, so caret movement and newlines in the text are never hijacked; Tab/click
+    /// leave or enter the editor.
     func handleKey(_ event: NSEvent) -> Bool {
         guard active else { return false }
+        // Let the input method see Esc/⌘↩ while composing (e.g. Chinese IME marked text).
+        if (window?.firstResponder as? NSTextView)?.hasMarkedText() == true { return false }
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        let isReturn = event.keyCode == 36 || event.keyCode == 76
         if event.keyCode == 53 {
-            if !busy { editing ? back() : cancel() }
+            cancel(); return true
+        }
+        if isReturn, modifiers == .command {
+            if copyOnlyReason == nil { submit() }
             return true
         }
-        if (event.keyCode == 36 || event.keyCode == 76), modifiers == .command {
-            submit(); return true
-        }
-        guard !editing, modifiers.isEmpty else { return false }
-        if event.keyCode == 36 || event.keyCode == 76 {
-            if let button = window?.firstResponder as? NSButton {
-                if !busy { button.performClick(nil) }
-            } else { openSelected() }
-            return true
-        }
-        if event.keyCode == 125 || event.keyCode == 126 {
-            if !busy, !options.isEmpty {
-                selected = (selected + (event.keyCode == 125 ? 1 : options.count - 1)) % options.count
-                updateControls()
-                if presentsWindows { window?.makeFirstResponder(optionButtons[selected]) }
+        guard modifiers.isEmpty, !((window?.firstResponder as? NSTextView)?.isEditable ?? false) else { return false }
+        if event.keyCode == 123 || event.keyCode == 124 {
+            if !busy, !cards.isEmpty {
+                let step = event.keyCode == 124 ? 1 : cards.count - 1
+                select((selected + step) % cards.count, focusEditor: false)
+                if presentsWindows { window?.makeFirstResponder(cards[selected]) }
             }
             return true
+        }
+        if isReturn {
+            if let button = window?.firstResponder as? NSButton {
+                if !busy { button.performClick(nil) }
+                return true
+            }
+            if let card = window?.firstResponder as? RewriteCard, !busy {
+                window?.makeFirstResponder(card.text)
+                return true
+            }
         }
         return false
     }
 
+    private func rebuildCards() {
+        for card in cards { cardsRow.removeArrangedSubview(card); card.removeFromSuperview() }
+        cards = options.enumerated().map { index, option in
+            let card = RewriteCard(name: Self.label(option.style), hint: Self.hint(option.style), body: option.text)
+            card.identifier = NSUserInterfaceItemIdentifier("card-\(index)")
+            card.onPick = { [weak self] in self?.select(index, focusEditor: true) }
+            card.translatesAutoresizingMaskIntoConstraints = false
+            cardsRow.addArrangedSubview(card)
+            // Always a third of the row, so fewer options mean fewer cards of the same width.
+            card.widthAnchor.constraint(equalTo: bodyContainer.widthAnchor, multiplier: 1.0 / 3,
+                                        constant: -88.0 / 3).isActive = true
+            return card
+        }
+    }
+
+    /// Long originals scroll inside the header and long options inside their card, so the footer
+    /// always stays on screen; heights are estimated from the text and capped by the screen.
+    private func sizePanel(original: String, screenFrame: NSRect) {
+        let panelWidth = min(1120, screenFrame.width - 40)
+        func height(_ text: String, width: CGFloat, size: CGFloat) -> CGFloat {
+            ceil(NSString(string: text).boundingRect(
+                with: NSSize(width: max(width, 60), height: 100_000),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: NSFont.systemFont(ofSize: size)]).height * 1.1)
+        }
+        // Whole lines only (at most three) so a scrolling original is never cut mid-line.
+        let lineHeight = NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: 16))
+        let lines = min(3, max(1, Int(ceil(height(original, width: panelWidth - 56 - 16 - 48, size: 16) / 1.1 / lineHeight))))
+        let originalH = ceil(CGFloat(lines) * lineHeight) + 3
+        originalHeight.constant = originalH
+        let cardTextWidth = (panelWidth - 88) / 3 - 32 - 20
+        let wanted = 77 + 20 + (options.map { height($0.text, width: cardTextWidth, size: 16) }.max() ?? 0)
+        let room = screenFrame.height - 50 - (originalH + 44) - 72 - 48
+        bodyHeight.constant = 48 + min(max(240, wanted), max(160, room))
+    }
+
     private func buildContent(_ window: NSWindow) {
         let root = NSView()
+        root.wantsLayer = true
         window.contentView = root
-        heading.font = .systemFont(ofSize: 20, weight: .semibold)
-        status.setAccessibilityLabel("改写状态")
+        let scrim = NSView()
+        scrim.wantsLayer = true
+        scrim.layer?.backgroundColor = rgb(0x141416, alpha: 0.5).cgColor
+        scrim.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(scrim)
+
+        panel.wantsLayer = true
+        panel.appearance = NSAppearance(named: .aqua)
+        panel.layer?.shadowColor = NSColor.black.cgColor
+        panel.layer?.shadowOpacity = 0.35
+        panel.layer?.shadowRadius = 40
+        panel.layer?.shadowOffset = CGSize(width: 0, height: -30)
+        panel.setAccessibilityRole(.group)
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(panel)
+        let clip = NSView()
+        clip.wantsLayer = true
+        clip.layer?.cornerRadius = 18
+        clip.layer?.masksToBounds = true
+        clip.layer?.backgroundColor = Palette.body.cgColor
+        clip.translatesAutoresizingMaskIntoConstraints = false
+        panel.addSubview(clip)
+
+        // Header: white band with the original text.
+        originalView.textColor = Palette.secondaryText
         originalView.setAccessibilityLabel("原文")
-        editor.setAccessibilityLabel("编辑改写全文")
-        editor.identifier = NSUserInterfaceItemIdentifier("rewrite-editor")
+        originalView.isSelectable = true
         let originalScroll = Self.scroll(originalView)
-        editorScroll = Self.scroll(editor)
-        originalHeight = originalScroll.heightAnchor.constraint(equalToConstant: 100)
-        editorHeight = editorScroll.heightAnchor.constraint(equalToConstant: 240)
+        originalScroll.scrollerStyle = .legacy  // always-visible scroller signals a long original
+        originalScroll.autohidesScrollers = false
+        originalHeight = originalScroll.heightAnchor.constraint(equalToConstant: 24)
         originalHeight.isActive = true
-        editorHeight.isActive = true
-        choices.orientation = .vertical
-        choices.alignment = .width
-        choices.spacing = 8
-        let actions: [(NSButton, Selector, String)] = [
-            (closeButton, #selector(cancel), "close"), (cancelButton, #selector(cancel), "cancel"),
-            (backButton, #selector(back), "back"), (openButton, #selector(openSelected), "open"),
-            (submitButton, #selector(submit), "submit"),
-            (copyButton, #selector(copyCandidate), "copy")]
-        for (button, action, id) in actions {
-            button.target = self; button.action = action; button.bezelStyle = .rounded
-            button.identifier = NSUserInterfaceItemIdentifier(id)
-            button.setAccessibilityLabel(button.title)
-        }
-        let header = NSStackView(views: [heading, NSView(), closeButton])
-        let footer = NSStackView(views: [backButton, NSView(), cancelButton, openButton, copyButton, submitButton])
-        footer.spacing = 8
-        let originalLabel = NSTextField(labelWithString: "原文")
-        let originalRow = NSStackView(views: [originalLabel, NSView()])
-        status.identifier = NSUserInterfaceItemIdentifier("rewrite-status")
-        status.font = .systemFont(ofSize: 13)
-        let statusRow = Self.scroll(status)
-        statusRow.heightAnchor.constraint(equalToConstant: 60).isActive = true
-        let styleRow = NSStackView(views: [styleLabel, NSView()])
-        let body = NSStackView(views: [originalRow, originalScroll, choices, styleRow, editorScroll])
-        body.orientation = .vertical
-        body.alignment = .width
-        body.spacing = 12
-        body.translatesAutoresizingMaskIntoConstraints = false
-        let bodyScroll = NSScrollView()
-        bodyScroll.hasVerticalScroller = true
-        bodyScroll.documentView = body
-        let preferredBodyHeight = bodyScroll.heightAnchor.constraint(equalTo: body.heightAnchor)
-        preferredBodyHeight.priority = .defaultLow
+        let originalLabel = NSTextField(labelWithString: "你写的")
+        originalLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        originalLabel.textColor = Palette.hint
+        originalLabel.setContentHuggingPriority(.required, for: .horizontal)
+        let header = Self.band([originalLabel, originalScroll], insets: NSEdgeInsets(top: 22, left: 28, bottom: 22, right: 28),
+                               spacing: 16, alignment: .top)
+
+        instructionSlot.isHidden = true
+        instructionField.placeholderString = "想怎么改"
+        instructionField.translatesAutoresizingMaskIntoConstraints = false
+        instructionSlot.addSubview(instructionField)
         NSLayoutConstraint.activate([
-            body.leadingAnchor.constraint(equalTo: bodyScroll.contentView.leadingAnchor),
-            body.topAnchor.constraint(equalTo: bodyScroll.contentView.topAnchor),
-            body.widthAnchor.constraint(equalTo: bodyScroll.contentView.widthAnchor),
-            bodyScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 80),
-            preferredBodyHeight
-        ])
-        let content = NSStackView(views: [header, bodyScroll, statusRow, footer])
-        content.orientation = .vertical
-        content.alignment = .width
-        content.spacing = 12
-        content.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(content)
-        for view in [header, bodyScroll, statusRow, footer] {
-            view.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+            instructionField.leadingAnchor.constraint(equalTo: instructionSlot.leadingAnchor, constant: 28),
+            instructionField.trailingAnchor.constraint(equalTo: instructionSlot.trailingAnchor, constant: -28),
+            instructionField.topAnchor.constraint(equalTo: instructionSlot.topAnchor, constant: 12),
+            instructionField.bottomAnchor.constraint(equalTo: instructionSlot.bottomAnchor, constant: -12)])
+
+        // Body: cards centered in an equal-thirds row.
+        let body = NSView()
+        bodyContainer = body
+        cardsRow.orientation = .horizontal
+        cardsRow.spacing = 16
+        cardsRow.distribution = .fill
+        cardsRow.translatesAutoresizingMaskIntoConstraints = false
+        body.addSubview(cardsRow)
+        bodyHeight = body.heightAnchor.constraint(equalToConstant: 300)
+        NSLayoutConstraint.activate([
+            bodyHeight,
+            cardsRow.centerXAnchor.constraint(equalTo: body.centerXAnchor),
+            cardsRow.leadingAnchor.constraint(greaterThanOrEqualTo: body.leadingAnchor, constant: 28),
+            cardsRow.trailingAnchor.constraint(lessThanOrEqualTo: body.trailingAnchor, constant: -28),
+            cardsRow.topAnchor.constraint(equalTo: body.topAnchor, constant: 24),
+            cardsRow.bottomAnchor.constraint(equalTo: body.bottomAnchor, constant: -24)])
+
+        // Footer: plain hint/status text (not a box) and the two actions.
+        status.identifier = NSUserInterfaceItemIdentifier("rewrite-status")
+        status.setAccessibilityLabel("改写状态")
+        status.font = .systemFont(ofSize: 12)
+        status.textContainerInset = NSSize(width: 0, height: 6)
+        let statusScroll = Self.scroll(status)
+        statusScroll.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        statusScroll.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        statusScroll.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        for (button, action, id) in [(cancelButton, #selector(cancel), "cancel"),
+                                     (primaryButton, #selector(primaryAction), "primary")] {
+            button.target = self
+            button.action = action
+            button.identifier = NSUserInterfaceItemIdentifier(id)
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
         }
-        for view in [originalRow, originalScroll, choices, styleRow, editorScroll!] {
-            view.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
-        }
-        let preferredWidth = content.widthAnchor.constraint(equalToConstant: 700)
+        let footer = Self.band([statusScroll, cancelButton, primaryButton],
+                               insets: NSEdgeInsets(top: 14, left: 28, bottom: 14, right: 28), spacing: 10, alignment: .centerY)
+
+        let stack = NSStackView(views: [header, Self.rule(), instructionSlot, body, Self.rule(), footer])
+        stack.orientation = .vertical
+        stack.spacing = 0
+        stack.alignment = .width
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        clip.addSubview(stack)
+        for view in [body, instructionSlot] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+
+        let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 1120)
         preferredWidth.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            content.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            content.centerYAnchor.constraint(equalTo: root.centerYAnchor),
-            content.widthAnchor.constraint(lessThanOrEqualToConstant: 700), preferredWidth,
-            content.leadingAnchor.constraint(greaterThanOrEqualTo: root.leadingAnchor, constant: 20),
-            content.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -20),
-            content.topAnchor.constraint(greaterThanOrEqualTo: root.topAnchor, constant: 20),
-            content.bottomAnchor.constraint(lessThanOrEqualTo: root.bottomAnchor, constant: -20)
-        ])
-        // Opaque semantic system colors also respect reduced transparency and increased contrast.
-        originalView.textColor = .labelColor
-        editor.textColor = .textColor
+            scrim.leadingAnchor.constraint(equalTo: root.leadingAnchor), scrim.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            scrim.topAnchor.constraint(equalTo: root.topAnchor), scrim.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            clip.leadingAnchor.constraint(equalTo: panel.leadingAnchor), clip.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
+            clip.topAnchor.constraint(equalTo: panel.topAnchor), clip.bottomAnchor.constraint(equalTo: panel.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: clip.leadingAnchor), stack.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: clip.topAnchor), stack.bottomAnchor.constraint(equalTo: clip.bottomAnchor),
+            panel.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            panel.centerYAnchor.constraint(equalTo: root.centerYAnchor),
+            panel.widthAnchor.constraint(lessThanOrEqualToConstant: 1120), preferredWidth,
+            panel.leadingAnchor.constraint(greaterThanOrEqualTo: root.leadingAnchor, constant: 20),
+            panel.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -20),
+            panel.topAnchor.constraint(greaterThanOrEqualTo: root.topAnchor, constant: 20),
+            panel.bottomAnchor.constraint(lessThanOrEqualTo: root.bottomAnchor, constant: -20)])
+    }
+
+    private static func band(_ views: [NSView], insets: NSEdgeInsets, spacing: CGFloat,
+                             alignment: NSLayoutConstraint.Attribute) -> NSView {
+        let band = NSView()
+        band.wantsLayer = true
+        band.layer?.backgroundColor = NSColor.white.cgColor
+        let row = NSStackView(views: views)
+        row.spacing = spacing
+        row.alignment = alignment
+        row.edgeInsets = insets
+        row.translatesAutoresizingMaskIntoConstraints = false
+        band.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: band.leadingAnchor), row.trailingAnchor.constraint(equalTo: band.trailingAnchor),
+            row.topAnchor.constraint(equalTo: band.topAnchor), row.bottomAnchor.constraint(equalTo: band.bottomAnchor)])
+        return band
+    }
+
+    private static func rule() -> NSView {
+        let line = NSView()
+        line.wantsLayer = true
+        line.layer?.backgroundColor = Palette.line.cgColor
+        line.heightAnchor.constraint(equalToConstant: 1).isActive = true
+        return line
     }
 
     private static func label(_ style: RewriteStyle) -> String {
@@ -367,12 +613,21 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private static func textView(editable: Bool) -> NSTextView {
-        let view = NSTextView()
-        view.isEditable = editable
+    private static func hint(_ style: RewriteStyle) -> String {
+        switch style {
+        case .direct: return "给赶时间的人：结论先行"
+        case .friendly: return "给同事：轻松、不生硬"
+        case .clear: return "给需要讲清楚的人：一句一事"
+        }
+    }
+
+    private static func staticTextView() -> NSTextView {
+        let view = RewriteTextView()
+        view.isEditable = false
         view.isRichText = false
-        view.font = .systemFont(ofSize: 17)
-        view.textContainerInset = NSSize(width: 8, height: 8)
+        view.drawsBackground = false
+        view.font = .systemFont(ofSize: 16)
+        view.textContainerInset = .zero
         view.isVerticallyResizable = true
         view.isHorizontallyResizable = false
         view.autoresizingMask = [.width]
@@ -384,7 +639,9 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         let scroll = NSScrollView()
         scroll.documentView = view
         scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
         return scroll
     }
 }

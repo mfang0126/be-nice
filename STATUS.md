@@ -1,7 +1,7 @@
 # be-nice 当前状态
 
 > 每次更新**覆盖重写**，只写当前事实，不追加历史。历史见 git log 与 [docs/archive/](docs/archive/)。
-> 更新：2026-10-26 22:55 AEDT
+> 更新：2026-10-27 00:15 AEDT
 
 ## 阶段：S0 Slack 能力探测（进行中）
 
@@ -16,7 +16,7 @@
 
 ## 代码现状
 
-- 改写 UI 已实现：屏幕边缘入口 → 居中遮罩 → 1–3 个完整改写 → 全文编辑 → 确认替换 → 可见撤销（`RewriteWindowController`、`OptimizerController`、`RewriteOptions`）。
+- 改写窗口 10-26 按设计 B「并排对比」重做（`RewriteWindowController`）：三张卡片并排显示全文，点选即可编辑，底栏主按钮替换，可见撤销不变；“想怎么改”输入框已留位置（隐藏）。经独立 review，修了输入法 Esc、处理中卡死、VoiceOver 三处问题。只做过后台截图和单元测试，**未在真实窗口验收**（遮罩、长原文滚动条待确认）。
 - 安全写回核心 `WriteBack.swift`：目标复核、单次写入、独立读回、possible-write 恢复。
 - Slack **未**加入 allowlist；`SlackDiagnostic.swift` 是只读、不含正文的诊断。
 - 个人风格学习代码保留但已从 UI 摘除（后置）。旧小绿点卡片、多 App 探针已删除，可从标签 `archive/multi-app-m0-m2` 找回。
