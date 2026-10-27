@@ -252,10 +252,12 @@ public enum WriteBackPolicy {
     /// and omits empty ones, and Slack turns each written "\n" into a new paragraph
     /// plus one empty paragraph (S3 10-27, 6.5 f2). So only "text (empty text)*" can
     /// be restored; Shift+Return lines (adjacent text paragraphs), double blank
-    /// lines and leading/trailing empty lines cannot. Unread trees count as restorable.
+    /// lines and leading/trailing empty lines cannot. An unread tree (no children)
+    /// counts as restorable; any non-AXGroup or unreadable ("") child, or misaligned
+    /// arrays, does not.
     public static func paragraphsRestorable(_ roles: [String], subroles: [String]) -> Bool {
-        guard !roles.isEmpty, roles.count == subroles.count,
-              roles.allSatisfy({ $0 == "AXGroup" }) else { return true }
+        if roles.isEmpty { return true }
+        guard roles.count == subroles.count, roles.allSatisfy({ $0 == "AXGroup" }) else { return false }
         let empty = subroles.map { $0 == "AXEmptyGroup" }
         return empty.count % 2 == 1 && empty.enumerated().allSatisfy { $0.element == ($0.offset % 2 == 1) }
     }
@@ -1021,8 +1023,8 @@ public struct SystemTextTargetAccess: TextTargetAccess {
             var subroles: [String] = []
             for child in children {
                 var role: CFTypeRef?
-                if AXUIElementCopyAttributeValue(child, "AXRole" as CFString, &role) == .success,
-                   let r = role as? String { roles.append(r) }
+                roles.append(AXUIElementCopyAttributeValue(child, "AXRole" as CFString, &role) == .success
+                    ? (role as? String ?? "") : "")
                 var subrole: CFTypeRef?
                 subroles.append(AXUIElementCopyAttributeValue(child, "AXSubrole" as CFString, &subrole) == .success
                     ? (subrole as? String ?? "") : "")

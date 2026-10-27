@@ -724,8 +724,12 @@ struct WriteBackTests {
         expect(!restorable(["", e]), "trailing empty line is not restorable")
         expect(!restorable([e, ""]), "leading empty line is not restorable")
         expect(WriteBackPolicy.paragraphsRestorable([], subroles: []), "unread tree counts as restorable")
-        expect(WriteBackPolicy.paragraphsRestorable([p, "AXList"], subroles: ["", "AXContentList"]),
-               "non-paragraph children are left to childrenAreRich")
+        expect(!WriteBackPolicy.paragraphsRestorable([p, "AXList"], subroles: ["", "AXContentList"]),
+               "non-paragraph child at depth 0 is not restorable")
+        expect(!WriteBackPolicy.paragraphsRestorable([p, "", p], subroles: ["", e, ""]),
+               "unreadable role at depth 0 is not restorable")
+        expect(!WriteBackPolicy.paragraphsRestorable([p, p], subroles: ["", e, ""]),
+               "misaligned role/subrole arrays are not restorable")
         do {
             let access = slackSetup()
             access.rich = true
