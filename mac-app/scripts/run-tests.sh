@@ -37,6 +37,13 @@ run style-profile $S/StyleProfile.swift $T/StyleProfileTests.swift
 run style-extraction $S/ModelClient.swift $S/RewriteOptions.swift $S/StyleProfile.swift $S/StyleExtraction.swift $T/StyleExtractionTests.swift
 run style-window -lib $S/ModelClient.swift $S/RewriteOptions.swift $S/StyleProfile.swift $S/StyleExtraction.swift $S/StyleWindow.swift $T/StyleWindowTests.swift
 
+# The WriteBackController `support:` test seam must stay out of production call sites.
+if grep -rn 'support:' mac-app/Sources --exclude=WriteBack.swift; then
+    echo "FAIL support-seam"; fail=1
+else
+    echo "PASS support-seam"
+fi
+
 for py in $T/OptimizerControllerTests.py $T/DiagnosticPublicationTests.py; do
     python3 -I "$py" >/dev/null 2>&1 && echo "PASS $(basename "$py")" || { echo "FAIL $(basename "$py")"; fail=1; }
 done

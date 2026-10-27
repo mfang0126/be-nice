@@ -754,13 +754,14 @@ public actor WriteBackController {
         let slack = record.target.conversationTitle != nil
         let layout = slack && current != record.pendingValue
             ? access.paragraphLayout(of: record.target.element) : nil
-        if current == record.target.originalValue, !slack || layout == record.target.paragraphs {
+        // A nil layout (unreadable AXChildren) never matches: nil == nil must not pass.
+        if current == record.target.originalValue, !slack || (layout != nil && layout == record.target.paragraphs) {
             undoRecord = nil
             state = .verified
             return .restored
         }
         guard current == record.pendingValue
-                || (current == record.appliedValue && (!slack || layout == record.appliedLayout)) else {
+                || (current == record.appliedValue && (!slack || (layout != nil && layout == record.appliedLayout))) else {
             // Third value or layout: never overwrite it.
             let failure = WriteBackFailure.targetChanged(.valueChanged)
             state = .failed(failure)

@@ -936,6 +936,41 @@ struct WriteBackTests {
             expect(access.writes.count == 1, "refused undo performs no write")
         }
 
+        // 35b. Unreadable (nil) Slack layout: undo never writes and never reports restored.
+        do {
+            let access = recordedSetup("a", [false])
+            let core = controller(access, "a\nb")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "setup apply for nil layout after apply")
+            access.layout = nil  // AXChildren unreadable; AXValue still equals appliedValue
+            expect(await core.undo() == .failed(.targetChanged(.valueChanged)),
+                   "undo refuses when the layout became unreadable")
+            expect(access.writes.count == 1, "nil-layout undo performs no write")
+        }
+        do {
+            let access = recordedSetup("a", [false])
+            access.slackRecorded?["a\(ls)b"] = ("a\nb", nil)
+            let core = controller(access, "a\nb")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .failed(.writeUnexpected), "apply with unreadable layout is a mismatch")
+            access.layout = nil
+            let writes = access.writes.count
+            expect(await core.undo() == .failed(.targetChanged(.valueChanged)),
+                   "layoutMismatch(nil) does not make undo possible")
+            expect(access.writes.count == writes, "layoutMismatch(nil) undo performs no write")
+        }
+        do {
+            let access = recordedSetup("a", [false])
+            let core = controller(access, "a\nb")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "setup apply for nil layout restore")
+            access.storedValue = "a"  // original text back, layout unreadable
+            access.layout = nil
+            let writes = access.writes.count
+            expect(await core.undo() != .restored, "nil layout never reports restored")
+            expect(access.writes.count == writes, "nil-layout restore check performs no write")
+        }
+
         // 36. Candidate separators and zero-width characters (review finding 4).
         expect(WriteBackPolicy.slackCandidate("a\u{2029}b\u{0085}c\rd\r\ne") == "a\nb\nc\nd\ne",
                "U+2029, U+0085, CR and CRLF become newlines")
@@ -1059,7 +1094,7 @@ private final class FakeAccess: TextTargetAccess, @unchecked Sendable {
     var slackPendingReads = 0
     /// Written string -> (AXValue, layout) as recorded in real Slack. When set, the fake
     /// uses only this table, so a test cannot pass on the model it is checking.
-    var slackRecorded: [String: (String, [Bool])]?
+    var slackRecorded: [String: (String, [Bool]?)]?
     var roleValue: String? = "AXTextArea"
     var subroleValue: String?
     var storedValue = ""
