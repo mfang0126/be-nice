@@ -7,7 +7,8 @@ macOS 菜单栏 App：把用户在 Slack 里写好的草稿改写成 1–3 个�
 1. [STATUS.md](STATUS.md)：当前阶段、卡点、下一步。
 2. [PLAN.md](PLAN.md)：已确认的决策和 S0–S4 验收标准，唯一计划来源。
 3. [GLOSSARY.md](GLOSSARY.md)：术语。
-4. 需要时再看 `docs/research/`（当前证据）、`docs/archive/`（历史，不是待办）、`mac-app/README.md`（构建和测试命令）。
+4. 要用 LCU 做真实界面测试且你**不是 Opus 5.5**：先读 [docs/research/lcu-gui-testing.md](docs/research/lcu-gui-testing.md)（Opus 5.5 不用读）。
+5. 需要时再看 `docs/research/`（当前证据）、`docs/archive/`（历史，不是待办）、`mac-app/README.md`（构建和测试命令）。
 
 ## 硬规则
 

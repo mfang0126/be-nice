@@ -149,11 +149,42 @@ struct RewriteWindowTests {
         }
         let panel = card(0).superview!.superview!.superview!.superview!
         expect(root.bounds.contains(panel.convert(panel.bounds, to: root)), "small-screen panel stays within window")
+        // Anchored: the panel sits on the field's bottom edge and stays on screen at the edges.
+        let big = NSRect(x: 0, y: 0, width: 1600, height: 1000)
+        for field in [NSRect(x: 600, y: 120, width: 400, height: 90), NSRect(x: 1500, y: 5, width: 90, height: 40)] {
+            controller.present(original: "Synthetic original", appName: "Fixture", options: options,
+                               screenFrame: big, anchor: field, onSubmit: { _ in }, onCancel: {})
+            controller.window!.contentView!.layoutSubtreeIfNeeded()
+            let root2 = controller.window!.contentView!
+            let panel2 = card(0).superview!.superview!.superview!.superview!
+            let box = panel2.convert(panel2.bounds, to: root2)
+            expect(root2.bounds.contains(box), "anchored panel stays on screen")
+            expect(abs(box.width - 1120) < 1, "anchored panel keeps its width at the edges")
+            if field.minY > 100 {
+                let bottom = box.minY
+                expect(abs(bottom - field.minY) < 2 && abs(box.midX - field.midX) < 2,
+                       "anchored panel sits on the field's bottom edge, centred on it")
+            }
+        }
+        // Low and high fields, and a screen whose origin is not zero.
+        let offsetScreen = NSRect(x: -1600, y: 200, width: 1600, height: 1000)
+        for (frameUnderTest, field) in [(big, NSRect(x: 600, y: 400, width: 400, height: 90)),
+                                        (offsetScreen, NSRect(x: -1000, y: 500, width: 400, height: 90))] {
+            controller.present(original: "Synthetic original", appName: "Fixture", options: options,
+                               screenFrame: frameUnderTest, anchor: field, onSubmit: { _ in }, onCancel: {})
+            controller.window!.contentView!.layoutSubtreeIfNeeded()
+            let root3 = controller.window!.contentView!
+            let box = card(0).superview!.superview!.superview!.superview!.convert(
+                card(0).superview!.superview!.superview!.superview!.bounds, to: root3)
+            expect(abs(box.minY - (field.minY - frameUnderTest.minY)) < 2
+                   && abs(box.midX - (field.midX - frameUnderTest.minX)) < 2,
+                   "anchored panel follows the field on a higher field and an offset screen")
+        }
         // Accessibility, card keyboard/mouse paths and IME safety.
         present()
         expect(card(0).accessibilityRole() == .radioButton, "card exposes radio button role")
         expect((card(0).accessibilityValue() as? Int) == 1 && (card(1).accessibilityValue() as? Int) == 0, "card value reflects selection")
-        expect((card(1).accessibilityLabel() ?? "").contains("Friendly") && (card(1).accessibilityLabel() ?? "").contains("Relaxed"), "card label is style plus hint")
+        expect((card(1).accessibilityLabel() ?? "").contains("Friendly") && (card(1).accessibilityLabel() ?? "").contains("Warm"), "card label is style plus hint")
         pick(2)
         expect((card(2).accessibilityValue() as? Int) == 1 && (card(1).accessibilityValue() as? Int) == 0, "value refreshes on selection change")
         _ = controller.window!.makeFirstResponder(card(1))
@@ -205,19 +236,20 @@ struct RewriteWindowTests {
         }
         func choose(_ item: NSMenuItem) { _ = NSApp.sendAction(item.action!, to: item.target, from: item) }
         let menu = styleButton(1).menu!
-        expect(menu.items.map(\.title) == presets.map(\.name) + ["", "Describe your own…"], "menu lists presets, separator, custom")
-        expect(menu.items[1].state == .on && menu.items[0].state == .off, "current style is checked")
+        expect(menu.items.map(\.title) == ["Polite", "Shorter", "Friendly", "", "Direct", "Clear", "Formal", "Polished English"],
+               "menu lists the user's three styles, a separator, then the other presets")
+        expect(!menu.items.map(\.title).contains("Describe your own…"), "no one-off custom entry")
+        expect(menu.items[2].state == .on && menu.items[0].state == .off, "current style is checked")
+        let split = RewriteWindowController.styleChoices(slots: [RewriteStyle(name: "direct", instruction: "x"),
+                                                                 RewriteStyle(name: "Mine", instruction: "y"), presets[2]])
+        expect(split.yours.count == 3 && !split.others.contains { $0.name == "Direct" || $0.name == "Clear" },
+               "presets already used (any case) are not listed twice")
         expect(styleButton(1).attributedTitle.string == "Friendly ▾", "title is a pull-down button")
-        expect(!tweakField().isHidden && tweakField().placeholderString == "How should it change? e.g. more polite, shorter", "tweak field visible")
-        choose(menu.items[1])
+        expect(!tweakField().isHidden && tweakField().placeholderString == "Change Direct: e.g. more polite, shorter", "tweak field visible and names the selected card")
+        choose(menu.items[2])
         expect(restyles.isEmpty, "current style does nothing")
-        choose(menu.items[4])
+        choose(menu.items[6])
         expect(restyles.count == 1 && restyles[0].0 == 1 && restyles[0].1 == presets[4], "preset calls onRestyle with card index")
-        controller.restyleCustom(2, "  \(String(repeating: "x", count: 300))  ")
-        expect(restyles.count == 2 && restyles[1].0 == 2 && restyles[1].1.name == "Custom"
-               && restyles[1].1.instruction.count == RewriteStyle.maxInstructionLength, "custom style trimmed and truncated")
-        controller.restyleCustom(2, "   ")
-        expect(restyles.count == 2, "blank custom style ignored")
         // Tweak
         let plain = NSTextView()
         let enter = #selector(NSResponder.insertNewline(_:))
@@ -248,8 +280,8 @@ struct RewriteWindowTests {
                "regenerating disables primary, menus and tweak field")
         expect(button("cancel").isEnabled, "Cancel stays enabled while regenerating")
         key(36, "\r", modifiers: .command)
-        controller.restyleCustom(0, "ignored")
-        expect(submissions.count == 1 && restyles.count == 2, "no submit or restyle while regenerating")
+        choose(menu.items[0])
+        expect(submissions.count == 1 && restyles.count == 1, "no submit or restyle while regenerating")
         controller.setRegenerating(nil)
         expect(editor().string == "Edited second" && editor().isEditable && button("primary").isEnabled && tweakField().isEnabled,
                "setRegenerating(nil) restores text and controls")
@@ -257,7 +289,7 @@ struct RewriteWindowTests {
         controller.updateOption(1, RewriteOption(style: presets[3], text: "Shorter text"))
         expect(editor().string == "Shorter text" && editor().isEditable, "updateOption swaps text and ends regenerating")
         expect(card(1).isAccessibilitySelected(), "updateOption keeps selection")
-        expect(styleButton(1).attributedTitle.string == "Shorter ▾" && styleButton(1).menu!.items[3].state == .on, "updateOption swaps style name and checkmark")
+        expect(styleButton(1).attributedTitle.string == "Shorter ▾" && styleButton(1).menu!.items[1].state == .on, "updateOption swaps style name and checkmark")
         expect(button("primary").title == "Replace with Shorter" && button("primary").isEnabled, "primary follows new style")
         controller.dismiss()
         if failures == 0 { print("RewriteWindowTests PASS"); exit(0) }

@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         setupMenu()
         let optimizer = OptimizerController()
         optimizerController = optimizer
+        optimizer.onNeedsSetup = { [weak self] in self?.openModelSettings() }
         let triggers = TriggerController { [weak self] target in
             self?.optimizerController?.trigger(target)
         }
@@ -151,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         menu.addItem(check)
 
         menu.addItem(.separator())
-        let shortcut = NSMenuItem(title: "Optimize shortcut", action: nil, keyEquivalent: "")
+        let shortcut = NSMenuItem(title: "Rewrite shortcut", action: nil, keyEquivalent: "")
         shortcut.isEnabled = false
         menu.addItem(shortcut)
         shortcutMenuItem = shortcut
@@ -182,11 +183,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard let triggerController else { return }
         switch triggerController.hotKeyStatus {
         case .registered:
-            shortcutMenuItem?.title = "Optimize shortcut: \(TriggerController.HotKey.defaultShortcutDescription)"
+            shortcutMenuItem?.title = "Rewrite shortcut: \(TriggerController.HotKey.defaultShortcutDescription)"
         case .failed(let status):
             shortcutMenuItem?.title = "Shortcut unavailable (\(status)); use the floating dot"
         case .notStarted:
-            shortcutMenuItem?.title = "Optimize shortcut: starting…"
+            shortcutMenuItem?.title = "Rewrite shortcut: starting…"
         }
     }
 

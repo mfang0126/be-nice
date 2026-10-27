@@ -82,11 +82,27 @@
 - ~~试用版之后第一项~~：“想怎么改”输入框已并入上面的 2b（只重写选中卡片，而不是三张）。
 - **体验改进（2026-10-27 用户确认，按此顺序）**，在线设计稿 https://claude.ai/artifact/VJXtrtQqHvZJbC8m78e32w （不入仓库） ：
   1. 改写窗口的原文：整宽浅灰框，字号同卡片；长文先显示几行，“Show all”展开。
-  2. 三种风格可改：点卡片上的风格名弹出预设（Direct / Friendly / Clear / Shorter / Formal / Polished English）或自写一句；只重写这一张卡片，并记住作为下次默认。设置页可改同样三个位置。
+  2. 三种风格可改（10-27 16:36 用户改定，取代之前“预设 + 写自己的 + Delete”的做法）：设置页三个位置各一行，直接填“名字（≤40）+ 一句说明（≤200）”两个框，三个默认（Polite / Shorter / Friendly）也能改；每行右边 `Presets ▾` 把预设填进这一行当起点；底部 `Restore defaults` 一次恢复三个默认，不弹确认，Save 之前不落盘。Save 时校验：不能为空、不能有换行/控制字符、不能含提示标签、三个名字不能重名（忽略大小写），出错在状态行写明哪一行。没有“预设 vs 自写”之分，也没有风格库。改写窗口卡片菜单列“你的三种风格 + 其余预设”，只影响这一次；去掉 “Describe your own…”（用微调栏代替）。存储沿用 `be-nice.styleSlots`；Save 时写 `be-nice.styleSlotsEdited`，旧默认（Direct/Friendly/Clear）自动迁移只在没有该标记时生效；存储里含标签或重名的数据读出来按默认处理。
   2b. 微调（10-27 13:41 用户确认，和第 2 项一起做）：选中卡片可直接改字；原文下方 “How should it change?” 一行输入，回车只重写**当前选中的卡片**；换风格同样只重写那一张。
   3.（10-27 14:20 已实现，待用户实测）设置页兼首次引导：provider 只有两种（10-27 13:11 用户改定）——**Custom**：任意 OpenAI 兼容地址，自己填 base URL、key、model，不做服务商预设；**GitHub Copilot**：电脑上已登录就直接用，没登录只提示怎么登录，不做 App 内登录。Test 显示一次成功和耗时。
+  5.（10-27 16:03 用户确认，来自 Opus 独立 review；a–e 已实现，16:15 真实窗口实测通过）：
+     a. 提示词加规则：不把问句改成命令，不添加原文没有的问候、感谢、落款，不比原文更强硬；新增预设 Polite；默认三个位置改为 Polite / Shorter / Friendly（旧默认 Direct/Friendly/Clear 且没改过的自动换成新默认）。
+     b. 微调栏占位字写明作用对象，如 “Change Polite: e.g. shorter, more casual”。
+     c. 用户在改写窗口按 Esc/Cancel 关闭时，不再弹出上一次替换的 “Undo last replace”（菜单栏里仍可撤销）。
+     d. 选中的卡片说明行改为 “Edit, then ⌘↩”，提示它可直接改字。
+     e. 名称统一为 Be Nice / “Rewrite shortcut”（去掉 Optimize）；设置页按钮靠右，Save 在最右。
   - 第 1 项原文显示已完成（10-27 用户认可）。
-- **后置**：选区改写、个人风格学习、其他 App 矩阵扩展、Windows、模板管理、自动抓取 Slack、历史库、嵌入式模型、公开分发签名公证。已有个人风格实现和旧盲评失败仅保留作历史证据。
+  4.（10-27 15:46 用户确认“全部按建议做”，来自 UI/UX 与使用体验分析；a–e 已实现，10-27 16:20 在 Slack 私聊实测 a、b、c、e，d 的位置待用户目测）：
+     a. 在改写窗口里换风格只影响这一次，不再改默认；默认只在设置页改。（取代第 2 项里“记住作为下次默认”。）
+     b. 三版要有差别：预设风格的说明写得更有区分度，提示词要求三版措辞和结构明显不同。
+     c. 微调输入栏做明显：有边框、字号同卡片、占位字更清楚。
+     d. 改写窗口靠近输入框出现（在输入框上方，水平对齐入口按钮，贴屏幕边时收进屏幕），不再居中盖住对话。
+     e. 底部提示收短为一句（⌘↩ replace · esc close · nothing is sent），其余用悬停提示；去掉原稿框多余竖线；卡片高度贴合内容。
+  6.（10-27 17:08 用户确认，来自 Opus 对三件未决事项的建议）：
+     a. 隐私：全新安装（没存过 provider、也没填过 base URL）时，点 Rewrite 不再默认走 Copilot；不调用 `gh`、不发任何模型请求，只在输入框旁提示并打开设置页，设置页写 “Choose where your drafts are sent. Nothing is sent until you Save.”；设置页仍可预选 Copilot，点 Save 才算选定。已填过 base URL 的老安装仍按 Custom。README Setup 开头加 “Nothing is sent until you choose a provider and click Save.”。
+     b. “改写里新增了链接/@提及/日期”的提示：**不做**，记入后置。理由：提示词已禁止添加内容，替换前看得到全文且可 Undo，数字/日期比较误报多、中文抓不准。若以后要做，只比 URL 和 @mention，卡片说明行加 `Adds: …`。
+     c. 推送：第 a 项做完、README 对齐实际行为（三个默认风格、可编辑、Restore defaults、Copilot 无公开文档可能失效）后，整个分支作为一个 PR 并进 main；推送和开 PR 需用户另行授权；v0.1.0 发布说明不改，新内容写进下一个版本的说明。
+- **后置**：选区改写、个人风格学习、其他 App 矩阵扩展、Windows、模板管理、自动抓取 Slack、历史库、嵌入式模型、公开分发签名公证、改写里“新增链接/@提及”提示。已有个人风格实现和旧盲评失败仅保留作历史证据。
 
 ## 模型接入（v3 定案，10-23 已提交的 PLAN v3；macOS only 见 PLAN v3.2）
 

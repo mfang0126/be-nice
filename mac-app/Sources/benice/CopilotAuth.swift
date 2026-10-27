@@ -32,7 +32,7 @@ enum CopilotAuth {
     /// Where `gh` may live: PATH first, then Homebrew and ~/.local/bin (a menu-bar app has a
     /// minimal PATH). Order is preserved and duplicates removed. Pure: no filesystem checks.
     static func ghCandidates(path: String?, home: String) -> [String] {
-        let dirs = (path ?? "").split(separator: ":").map { String($0) + "/gh" }
+        let dirs = (path ?? "").split(separator: ":").filter { $0.hasPrefix("/") }.map { String($0) + "/gh" }
         var seen = Set<String>()
         return (dirs + ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", home + "/.local/bin/gh"])
             .filter { seen.insert($0).inserted }
@@ -43,6 +43,7 @@ enum CopilotAuth {
         var env = base
         env["GITHUB_TOKEN"] = nil
         env["GH_TOKEN"] = nil
+        env["GH_HOST"] = nil  // always the github.com login, never an enterprise host
         env["GH_PROMPT_DISABLED"] = "1"
         env["GH_NO_UPDATE_NOTIFIER"] = "1"
         return env
@@ -112,18 +113,23 @@ enum CopilotAuth {
         let env = ghEnvironment(from: ProcessInfo.processInfo.environment)
         for path in candidates {
             guard let out = runGh(path, env) else { continue }
-            let token = out.trimmingCharacters(in: .whitespacesAndNewlines)
-            if token.isEmpty { continue }
+            guard let token = validToken(out) else { continue }
             cacheLock.withLock { cachedToken = token }
             return token
         }
         throw AuthError.notLoggedIn
     }
 
+    /// First line of `gh` output if it looks like a GitHub token; anything else (warnings, JSON) is rejected.
+    static func validToken(_ output: String) -> String? {
+        let line = output.split(whereSeparator: \.isNewline).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        return line.range(of: #"^[A-Za-z0-9_.-]{20,255}$"#, options: .regularExpression) == nil ? nil : line
+    }
+
     private static func runRealGh(path: String, environment: [String: String]) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = ["auth", "token"]
+        process.arguments = ["auth", "token", "--hostname", "github.com"]
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -134,6 +140,7 @@ enum CopilotAuth {
         do { try process.run() } catch { return nil }
         if done.wait(timeout: .now() + 5) == .timedOut {
             process.terminate()
+            if done.wait(timeout: .now() + 1) == .timedOut { kill(process.processIdentifier, SIGKILL) }
             return nil
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
@@ -142,7 +149,7 @@ enum CopilotAuth {
     }
 
     /// GET /models with the token. Blocking-safe: uses URLSession async.
-    static func listModels(token: String, session: URLSession = .shared) async throws -> [Model] {
+    static func listModels(token: String, session: URLSession = ModelClient.safeSession) async throws -> [Model] {
         var request = URLRequest(url: modelsEndpoint, timeoutInterval: 30)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
@@ -155,7 +162,7 @@ enum CopilotAuth {
             throw AuthError.models(error.localizedDescription)
         }
         guard let http = response as? HTTPURLResponse else { throw AuthError.models("unexpected response") }
-        if http.statusCode == 401 { throw AuthError.notLoggedIn }
+        if http.statusCode == 401 { resetTokenCache(); throw AuthError.notLoggedIn }
         guard (200..<300).contains(http.statusCode) else { throw AuthError.models("HTTP \(http.statusCode)") }
         return try usableModels(from: data)
     }

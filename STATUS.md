@@ -1,7 +1,7 @@
 # be-nice 当前状态
 
 > 每次更新**覆盖重写**，只写当前事实，不追加历史。历史见 git log 与 [docs/archive/](docs/archive/)。
-> 更新：2026-10-27 14:25 AEDT
+> 更新：2026-10-27 17:25 AEDT
 
 ## 阶段：S1 Slack 安全写回（私聊已跑通，未交付）
 
@@ -28,8 +28,12 @@
 
 - 界面文案全部英文。三个风格位置可配置（默认 Direct / Friendly / Clear，存 UserDefaults `be-nice.styleSlots`），默认选中第一张。
 - 改写窗口：设计 B「并排对比」，Slack 配色；原稿整宽浅灰框（最多 5 行，按真实排版测高）。
-- 体验改进第 3 项已完成（10-27 14:25，未在设置窗口里点过，仅离屏渲染 + 真实调用验证）：设置页两种 provider——GitHub Copilot（用本机 `gh auth token`，App 不登录/不存 token，模型取 `/models`，默认 gpt-4o-mini；实测三张卡 0.9 s）与 Custom（任意 OpenAI 兼容）；三个风格位置可在设置里改；Test 按钮。开发版已保存 custom 配置（DeepInfra），所以仍默认走 Custom，切到 Copilot 需在设置里点选后 Save。
-- 体验改进第 2 项与 2b 已完成（10-27 14:00，未在 Slack 里实测）：卡片风格名下拉换风格（6 预设 + 自写一句，只重写该卡片，成功后记入该位置）；“How should it change?” 一行微调，只重写选中卡片。DeepInfra 实测：三张 1.8 s、单张换风格 1.0 s、微调 0.7 s。Orca run `run_69e7a11e6a69`（两个 Sonnet worker）+ 独立 review 5 条均已修。
+- 体验改进第 3 项已完成（10-27 15:20 已在真实设置窗口点过：Custom Test 0.8 s、Copilot Test 1.3 s、Save 成功；开发版现在走 Copilot gpt-4o-mini）：设置页两种 provider——GitHub Copilot（用本机 `gh auth token`，App 不登录/不存 token，模型取 `/models`，默认 gpt-4o-mini；实测三张卡 0.9 s）与 Custom（任意 OpenAI 兼容）；三个风格位置可在设置里改；Test 按钮。开发版已保存 custom 配置（DeepInfra），所以仍默认走 Custom，切到 Copilot 需在设置里点选后 Save。
+- 体验改进第 5 项（Opus 独立 review 后，10-27 16:15 实测）：默认三个风格改为 Polite / Shorter / Friendly（旧默认且没改过的自动换新）；提示词不再把问句变命令、不加问候落款；微调栏写明对象；选中卡显示 “Edit, then ⌘↩”；关闭窗口不再弹旧 Undo；名称统一 Be Nice / Rewrite shortcut；设置按钮靠右。观察：Shorter 偶尔把问句缩成 “Please fix …”。
+- Opus 三份独立 review（Copilot 安全、控制器并发、提示注入）已处理（17:00，待提交）：重定向不再转发令牌且不落盘缓存；401 清令牌缓存；`gh auth token --hostname github.com` 并校验令牌形状；`< /original>`、全角、零宽字符不能伪造分隔符，选项路径的草稿也被包裹，单卡改写结果会校验；风格名和说明不许换行/控制字符；草稿上限 8000 字；关窗不再误弹旧 Undo，但写入不确定时保留 Undo；失败后释放 client/token。未做：提示用户“改写里新增了链接/@/日期”（新范围）、全新安装默认走 Copilot 的隐私确认（待用户定）。
+- 体验改进第 6 项（隐私，10-27 17:08 用户确认，提交 d9f9c3a 及随后修正）：全新安装（没存过 provider、没填过 base URL）点 Rewrite 不再默认走 Copilot——不调 `gh`、不发请求，只提示并打开设置页；设置页预选 Copilot 但不自动查登录/模型，点 Test 才查，点 Save 才算选定；老安装（有 base URL）仍是 Custom。README 已对齐（默认三风格、可编辑、Restore defaults、Nothing is sent until you Save）。新增链接/@提示不做（PLAN 后置）。**未在真实 App 里测全新安装路径**（需要清开发版的 UserDefaults，会动现有配置，待用户同意），逻辑由 SettingsTests 覆盖。推送/PR 待用户授权。
+- 体验改进第 4 项（UI/UX 分析，10-27 16:20）：换风格只影响这一次、不再改默认；预设说明更有区分度并要求三版明显不同；微调栏有边框、大字；窗口贴着输入框出现（盖住更少对话）；底部提示收短。已在 Slack 私聊实测换风格不改默认；窗口位置请用户目测。设置页风格已改为三行直接编辑（名字 + 一句说明，含默认三个），每行 `Presets ▾` 填入预设，`Restore defaults` 一次恢复，Save 时校验（非空、无换行/标签、不重名）；改写窗口卡片菜单列“你的三种风格 + 其余预设”，去掉 “Describe your own…”（10-27 16:36 用户改定，提交 1c64fc5，真实设置窗口已测：预设填入、重名拒绝、保存后卡片用新名字、Restore）。排版请用户目测。
+- 体验改进第 2 项与 2b 已完成（10-27 15:10 已在 Slack 私聊 LCU 实测通过：换风格 1.7 s 只重写一张，微调 1.6 s 只重写选中卡，替换读回一致，撤销精确恢复，Copilot 三张卡 1.6 s；测试怎么做见 docs/research/lcu-gui-testing.md）：卡片风格名下拉换风格（6 预设 + 自写一句，只重写该卡片，成功后记入该位置）；“How should it change?” 一行微调，只重写选中卡片。DeepInfra 实测：三张 1.8 s、单张换风格 1.0 s、微调 0.7 s。Orca run `run_69e7a11e6a69`（两个 Sonnet worker）+ 独立 review 5 条均已修。
 - 入口按钮贴 Slack 输入区盒子右上角外侧；状态胶囊同一行左对齐，32 pt 同高。
 - 安全写回核心 `WriteBack.swift`；Slack 已加入两份允许列表。
 - 开发版 API key 读 `~/Library/Application Support/be-nice/dev-api-key`（0600，仅 DEBUG 编译），避免每次重编译弹 Keychain 密码；正式版只用 Keychain。
@@ -43,7 +47,7 @@
 
 ## 下一步
 
-1. 用户在 Slack 私聊实测：换风格、一句话微调、设置页（Copilot / Custom 切换、Test、三个风格位置）。
+1. 真实 Slack 里还没测：中文 IME、长文、带 emoji/提及/链接的草稿。
 2. 中文/英文普通草稿多跑几次私聊闭环，验证提及和链接被识别为富内容。
 3. 频道与线程（S3）。
 4. 同一会话标题变化导致的误拒绝，按实测决定是否放宽。

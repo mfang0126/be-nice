@@ -11,42 +11,95 @@ public struct RewriteStyle: Codable, Equatable, Sendable {
     }
 
     public static let presets: [RewriteStyle] = [
-        RewriteStyle(name: "Direct", instruction: "Lead with the point"),
-        RewriteStyle(name: "Friendly", instruction: "Relaxed, not stiff"),
-        RewriteStyle(name: "Clear", instruction: "One idea per sentence"),
-        RewriteStyle(name: "Shorter", instruction: "Same message, half the words"),
-        RewriteStyle(name: "Formal", instruction: "For clients and leadership"),
+        RewriteStyle(name: "Direct", instruction: "Lead with the point, no hedging or filler"),
+        RewriteStyle(name: "Friendly", instruction: "Warm and conversational, like talking to a colleague"),
+        RewriteStyle(name: "Clear", instruction: "Plain words, short sentences, one idea each"),
+        RewriteStyle(name: "Shorter", instruction: "Same message, half the words, only what is needed"),
+        RewriteStyle(name: "Formal", instruction: "Professional tone for clients and leadership"),
         RewriteStyle(name: "Polished English", instruction: "Translate and tidy into English"),
+        RewriteStyle(name: "Polite", instruction: "Courteous and respectful; keep requests as polite questions"),
     ]
 
-    public static let defaultSlots = Array(presets.prefix(3))
+    /// Preset wording from earlier builds; slots saved with it are upgraded to the current wording.
+    static let retiredInstructions = [
+        "Direct": "Lead with the point", "Friendly": "Relaxed, not stiff", "Clear": "One idea per sentence",
+        "Shorter": "Same message, half the words", "Formal": "For clients and leadership",
+    ]
+
+    public static let defaultSlots = ["Polite", "Shorter", "Friendly"].compactMap { name in presets.first { $0.name == name } }
+    /// The defaults before Polite existed; slots still holding exactly these are moved to the new defaults.
+    static let previousDefaultNames = ["Direct", "Friendly", "Clear"]
     static let maxInstructionLength = 200
 }
 
 /// The three style slots shown as cards, in order; slot 1 is selected by default.
 enum StyleSlots {
     static let key = "be-nice.styleSlots"
+    /// Set by Save: the user chose these slots, so the old default trio is theirs to keep.
+    static let editedKey = "be-nice.styleSlotsEdited"
 
     static func load(_ defaults: UserDefaults = .standard) -> [RewriteStyle] {
         guard let data = defaults.data(forKey: key),
               let slots = try? JSONDecoder().decode([RewriteStyle].self, from: data),
-              slots.count == 3, slots.allSatisfy(isValid) else { return RewriteStyle.defaultSlots }
-        return slots
+              slots.count == 3, slots.allSatisfy(isValid), hasDistinctNames(slots) else { return RewriteStyle.defaultSlots }
+        let upgraded = slots.map { slot in
+            RewriteStyle.presets.first { $0.name == slot.name && RewriteStyle.retiredInstructions[slot.name] == slot.instruction }
+                ?? slot
+        }
+        let untouched = !defaults.bool(forKey: editedKey)
+        return untouched && upgraded.map(\.name) == RewriteStyle.previousDefaultNames ? RewriteStyle.defaultSlots : upgraded
     }
 
     static func save(_ slots: [RewriteStyle], _ defaults: UserDefaults = .standard) {
-        guard slots.count == 3, slots.allSatisfy(isValid),
+        guard slots.count == 3, slots.allSatisfy(isValid), hasDistinctNames(slots),
               let data = try? JSONEncoder().encode(slots) else { return }
         defaults.set(data, forKey: key)
+        defaults.set(true, forKey: editedKey)
+    }
+
+    /// Cards are labelled by name, so two slots must not share one (case-insensitive).
+    static func hasDistinctNames(_ slots: [RewriteStyle]) -> Bool {
+        Set(slots.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }).count == slots.count
+    }
+
+    /// The three rows typed in Settings as slots, or the first problem in plain words.
+    static func slots(names: [String], instructions: [String]) -> Result<[RewriteStyle], StyleSlotError> {
+        guard names.count == 3, instructions.count == 3 else { return .failure(.init(message: "Fill in all three styles.")) }
+        var result: [RewriteStyle] = []
+        for row in 0..<3 {
+            let number = row + 1
+            let name = names[row].trimmingCharacters(in: .whitespacesAndNewlines)
+            let instruction = instructions[row].trimmingCharacters(in: .whitespacesAndNewlines)
+            if name.isEmpty || name.count > 40 {
+                return .failure(.init(message: "Style \(number) needs a name (up to 40 characters)."))
+            }
+            if instruction.isEmpty || instruction.count > RewriteStyle.maxInstructionLength {
+                return .failure(.init(message: "Style \(number) needs one line of instruction (up to \(RewriteStyle.maxInstructionLength) characters)."))
+            }
+            let style = RewriteStyle(name: name, instruction: instruction)
+            guard isValid(style) else {
+                return .failure(.init(message: "Style \(number) can't contain “<” tags or line breaks."))
+            }
+            result.append(style)
+        }
+        guard hasDistinctNames(result) else { return .failure(.init(message: "Give each style a different name.")) }
+        return .success(result)
     }
 
     static func isValid(_ style: RewriteStyle) -> Bool {
         let name = style.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let instruction = style.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        let plain = { (text: String) in
+            text.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) && !CharacterSet.newlines.contains($0) }
+        }
         return !name.isEmpty && name.count <= 40
             && !instruction.isEmpty && instruction.count <= RewriteStyle.maxInstructionLength
+            && plain(name) && plain(instruction)
+            && !ModelClient.containsStylesDelimiter(name + instruction)
     }
 }
+
+struct StyleSlotError: Error, Equatable { let message: String }
 
 public struct RewriteOption: Equatable, Sendable {
     public let style: RewriteStyle
