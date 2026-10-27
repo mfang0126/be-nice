@@ -305,6 +305,30 @@ struct ModelClientTests {
         expect(ModelClient.keepingTag(of: "[WIP] fix it", in: "Please fix it.") == "[WIP] Please fix it.", "tag restored with the draft's gap")
         expect(ModelClient.keepingTag(of: "[WIP] fix it", in: "[WIP] Fix it.") == "[WIP] Fix it.", "present tag untouched")
         expect(ModelClient.keepingTag(of: "fix it [x]", in: "Fix it.") == "Fix it.", "only a leading tag is enforced")
+        // Round 3 review findings.
+        let kt = ModelClient.keepingTag(of:in:)
+        expect(kt("[WIP] fix", "[wip] Fix") == "[WIP] Fix", "F2: differently-cased candidate tag replaced, not doubled")
+        expect(kt("[WIP] fix", "[DRAFT] Fix") == "[WIP] Fix", "F2: a different candidate tag is replaced")
+        expect(kt("[docs](https://x) is down", "Docs is down") == "Docs is down", "F2: markdown link is not a tag")
+        expect(kt("[ ] todo", "Todo") == "Todo" && kt("[x] done", "Done") == "Done" && kt("[X] done", "Done") == "Done",
+               "F2: checkboxes are not tags")
+        for (draft, cand) in [("张三 will review", "Zhang San will review"), ("print('你好')", "Print hello")] {
+            expect(ModelClient.scriptsAgree(draft: draft, candidate: cand), "F3: 1-2 Han chars are not checked: \(draft)")
+        }
+        expect(!ModelClient.scriptsAgree(draft: "一二三 ok", candidate: "one two three"), "F3: 3+ Han chars need a Han candidate")
+        expect(!ModelClient.scriptsAgree(draft: "Review the PR", candidate: "看 PR"), "F3: 0 Han chars need a Han-free candidate")
+        RequestStub.state.reset(content: "Please check the build log.")
+        expect((try? await styledClient.rewriteOne(original: zhDraft, style: zhStyles[0], current: nil,
+                                                   instruction: "translate to English")) == "[be-nice test] Please check the build log.",
+               "F1: a tweak instruction skips the language check")
+        // F4: CJK draft survives byte-for-byte through the stubbed path.
+        let zhExact = " \t麻烦看一下 构建日志，谢谢！\r\n"
+        RequestStub.state.reset(content: #"{"options":[{"id":1,"text":"  请看下构建日志。\n"}]}"#)
+        _ = try! await styledClient.rewriteOptions(text: zhExact, styles: [styles[0]])
+        let zhObject = try! JSONSerialization.jsonObject(with: RequestStub.state.bodies()[0]) as! [String: Any]
+        let zhWire = zhObject["messages"] as! [[String: String]]
+        expect(Array(zhWire.last!["content"]!.utf8) == Array("<original>\n\(zhExact)\n</original>".utf8),
+               "F4: Chinese original is byte-identical on the wire")
         for prompt in [ModelClient.systemPrompt, ModelClient.optionsSystemPrompt, ModelClient.rewriteOneSystemPrompt] {
             expect(prompt.contains("Chinese") && prompt.contains("[WIP]"), "every prompt keeps language and tag")
         }

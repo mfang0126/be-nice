@@ -130,7 +130,10 @@ public struct ModelClient: Sendable {
         // Same bar as the options path: a card never carries a fence or our own tags.
         guard !text.hasPrefix("```"), !Self.containsStylesDelimiter(text),
               text.count <= Self.maxDraftLength else { throw ModelClientError.malformedResponse }
-        guard Self.scriptsAgree(draft: original, candidate: text) else { throw ModelClientError.wrongLanguage }
+        // A tweak such as "translate to English" may legitimately change script.
+        guard instruction != nil || Self.scriptsAgree(draft: original, candidate: text) else {
+            throw ModelClientError.wrongLanguage
+        }
         return Self.keepingTag(of: original, in: text)
     }
 
@@ -243,38 +246,40 @@ public struct ModelClient: Sendable {
 
     // MARK: - Draft fidelity checks (deterministic, applied after parsing)
 
-    private static let leadingTag = try! NSRegularExpression(pattern: #"^\s*(\[[^\]\n]+\])(\s*)"#)
+    private static let leadingTag = try! NSRegularExpression(pattern: #"^\s*(\[[^\]\n]+\])(?!\()(\s*)"#)
 
-    /// The draft's leading `[..]` tag and the whitespace after it, if any.
+    /// The leading `[..]` tag and the whitespace after it, if any. A markdown link `[a](u)` and
+    /// the checkboxes `[ ]`, `[x]`, `[X]` are not tags.
     private static func tagParts(_ text: String) -> (tag: String, gap: String, rest: String)? {
         let range = NSRange(text.startIndex..., in: text)
         guard let m = leadingTag.firstMatch(in: text, range: range),
               let tag = Range(m.range(at: 1), in: text), let gap = Range(m.range(at: 2), in: text),
-              let whole = Range(m.range, in: text) else { return nil }
+              let whole = Range(m.range, in: text),
+              !["[ ]", "[x]", "[X]"].contains(String(text[tag])) else { return nil }
         return (String(text[tag]), String(text[gap]), String(text[whole.upperBound...]))
     }
 
-    /// Prepends the draft's exact leading tag when the candidate lost it.
+    /// Gives the candidate the draft's exact leading tag, replacing any tag it has itself.
     static func keepingTag(of draft: String, in candidate: String) -> String {
         guard let parts = tagParts(draft) else { return candidate }
         let body = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-        return body.hasPrefix(parts.tag) ? candidate : parts.tag + parts.gap + body
+        return parts.tag + parts.gap + (tagParts(body)?.rest ?? body)
     }
 
-    /// ponytail: a draft and its rewrite must agree on whether they contain Han/kana (leading tag
-    /// ignored). Ceiling: cannot tell Chinese from Japanese, or English from other Latin-script
-    /// languages. A draft with no letters at all (digits, emoji) never rejects.
-    private static func hasHan(_ text: String) -> Bool {
-        (tagParts(text)?.rest ?? text).unicodeScalars.contains {
+    /// ponytail: compares Han/kana presence (leading tag ignored). Ceiling: cannot tell Chinese from
+    /// Japanese or English from other Latin languages, and a draft with 1-2 Han chars (a name, a
+    /// code string) is not checked. A draft with no letters (digits, emoji) never rejects.
+    private static func hanCount(_ text: String) -> Int {
+        (tagParts(text)?.rest ?? text).unicodeScalars.filter {
             (0x3040...0x30FF).contains($0.value) || (0x3400...0x4DBF).contains($0.value)
                 || (0x4E00...0x9FFF).contains($0.value)
-        }
+        }.count
     }
 
     static func scriptsAgree(draft: String, candidate: String) -> Bool {
-        let body = tagParts(draft)?.rest ?? draft
-        guard body.contains(where: \.isLetter) else { return true }
-        return hasHan(draft) == hasHan(candidate)
+        guard (tagParts(draft)?.rest ?? draft).contains(where: \.isLetter) else { return true }
+        let n = hanCount(draft), c = hanCount(candidate)
+        return n == 0 ? c == 0 : n >= 3 ? c >= 1 : true
     }
 
     /// Drops candidates in the wrong script and restores a lost leading tag. All dropped → error.
