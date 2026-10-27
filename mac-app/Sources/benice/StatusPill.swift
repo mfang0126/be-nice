@@ -108,15 +108,24 @@ final class RewriteStatusController {
         root.addSubview(label)
         panel.contentView = root
 
-        let screen = NSScreen.screens.first { $0.frame.intersects(target) } ?? NSScreen.main
-        if let bounds = screen?.visibleFrame {
-            let placed = target.isEmpty ? nil
-                : TriggerGeometry.pillFrame(field: target, within: bounds, size: size)
-            let f = placed ?? NSRect(x: bounds.maxX - size.width - 16, y: bounds.minY + 24,
-                                     width: size.width, height: size.height)
-            panel.setFrame(f, display: true)
-        }
+        place(target, size: size)
         panel.orderFrontRegardless()
+    }
+
+    private func place(_ target: CGRect, size: CGSize) {
+        let screen = NSScreen.screens.first { $0.frame.intersects(target) } ?? NSScreen.main
+        guard let bounds = screen?.visibleFrame else { return }
+        let placed = target.isEmpty ? nil
+            : TriggerGeometry.pillFrame(field: target, within: bounds, size: size)
+        let f = placed ?? NSRect(x: bounds.maxX - size.width - 16, y: bounds.minY + 24,
+                                 width: size.width, height: size.height)
+        panel.setFrame(f, display: true)
+    }
+
+    /// Moves a visible pill to a re-measured anchor; never shows a hidden one.
+    func reanchor(_ target: CGRect) {
+        guard panel.isVisible else { return }
+        place(target, size: panel.frame.size)
     }
 
     func hide() { panel.orderOut(nil) }

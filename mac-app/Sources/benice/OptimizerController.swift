@@ -19,6 +19,7 @@ final class OptimizerController {
     var onNeedsSetup: (() -> Void)?
     // A failed replace may still have written; its Undo must outlive closing the window.
     private var uncertainWrite = false
+    private var reanchor: Task<Void, Never>?
 
     init() {
         previewWindow.onRestyle = { [weak self] index, style in self?.regenerate(index, style: style, tweak: nil) }
@@ -31,6 +32,7 @@ final class OptimizerController {
         guard !busy else { return }
         cancelPreview()
         uncertainWrite = false
+        reanchor?.cancel()
         generation &+= 1
         let token = generation
         pendingTarget = target
@@ -164,11 +166,11 @@ final class OptimizerController {
                 pendingTarget = nil
                 shown = nil  // holds the client and token
                 previewWindow.dismiss()
-                showStatus("Replaced", anchor: target.liveAnchorRect)
+                showStatus("Replaced", anchor: target.liveAnchorRect, refresh: { target.liveAnchorRect })
             case .failed(let error):
                 uncertainWrite = recovery === core
                 previewWindow.resumeCopyOnly(reason: error.message)
-                showStatus(error.message, anchor: target.liveAnchorRect)
+                showStatus(error.message, anchor: target.liveAnchorRect, refresh: { target.liveAnchorRect })
             }
         }
     }
@@ -179,6 +181,7 @@ final class OptimizerController {
         guard !busy, let core = recovery, let target = recoveryTarget else { return }
         cancelPreview()
         busy = true
+        reanchor?.cancel()
         statusWindow.hide()
         Task {
             let restored = await restoreFocus(target)
@@ -188,8 +191,8 @@ final class OptimizerController {
             case .restored:
                 recovery = nil
                 recoveryTarget = nil
-                showStatus("Restored", anchor: target.liveAnchorRect)
-            case .failed(let error): showStatus(error.message, anchor: target.liveAnchorRect)
+                showStatus("Restored", anchor: target.liveAnchorRect, refresh: { target.liveAnchorRect })
+            case .failed(let error): showStatus(error.message, anchor: target.liveAnchorRect, refresh: { target.liveAnchorRect })
             }
         }
     }
@@ -226,10 +229,11 @@ final class OptimizerController {
            app.bundleIdentifier == target.bundleID {
             app.activate(options: [])
         }
+        reanchor?.cancel()
         statusWindow.hide()
         // Only a possibly-written failed replace keeps its Undo on screen; a fresh rewrite never re-offers an old one.
         if returnToTarget, uncertainWrite, let target = recoveryTarget {
-            showStatus("Undo last replace", anchor: target.liveAnchorRect)
+            showStatus("Undo last replace", anchor: target.liveAnchorRect, refresh: { target.liveAnchorRect })
         }
     }
 
@@ -241,8 +245,17 @@ final class OptimizerController {
         showStatus(message, anchor: pendingTarget?.anchorRect ?? .zero)
     }
 
-    private func showStatus(_ message: String, anchor: CGRect) {
+    /// `refresh` re-reads the composer shortly after: Slack can resize it a frame after the text changes.
+    private func showStatus(_ message: String, anchor: CGRect, refresh: (() -> CGRect)? = nil) {
         statusWindow.show(message, target: anchor,
                           undo: recovery == nil ? nil : { [weak self] in self?.undoLast() }, cancel: nil)
+        reanchor?.cancel()
+        reanchor = nil
+        guard let refresh else { return }
+        reanchor = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            self?.statusWindow.reanchor(refresh())
+        }
     }
 }
