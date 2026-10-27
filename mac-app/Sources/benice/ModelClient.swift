@@ -261,26 +261,20 @@ public struct ModelClient: Sendable {
         return body.hasPrefix(parts.tag) ? candidate : parts.tag + parts.gap + body
     }
 
-    private enum Script { case han, latin }
-
-    /// ponytail: counts Han/kana vs Latin letters (leading tag ignored); a tie or no letters is
-    /// "unknown" and never rejects. Mixed-language drafts are judged by majority only; upgrade
-    /// to NLLanguageRecognizer if that misfires.
-    private static func dominantScript(_ text: String) -> Script? {
-        var han = 0, latin = 0
-        for scalar in (tagParts(text)?.rest ?? text).unicodeScalars {
-            switch scalar.value {
-            case 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF: han += 1
-            case 0x41...0x5A, 0x61...0x7A, 0xC0...0x24F: latin += 1
-            default: break
-            }
+    /// ponytail: a draft and its rewrite must agree on whether they contain Han/kana (leading tag
+    /// ignored). Ceiling: cannot tell Chinese from Japanese, or English from other Latin-script
+    /// languages. A draft with no letters at all (digits, emoji) never rejects.
+    private static func hasHan(_ text: String) -> Bool {
+        (tagParts(text)?.rest ?? text).unicodeScalars.contains {
+            (0x3040...0x30FF).contains($0.value) || (0x3400...0x4DBF).contains($0.value)
+                || (0x4E00...0x9FFF).contains($0.value)
         }
-        return han == latin ? nil : (han > latin ? .han : .latin)
     }
 
     static func scriptsAgree(draft: String, candidate: String) -> Bool {
-        guard let want = dominantScript(draft), let got = dominantScript(candidate) else { return true }
-        return want == got
+        let body = tagParts(draft)?.rest ?? draft
+        guard body.contains(where: \.isLetter) else { return true }
+        return hasHan(draft) == hasHan(candidate)
     }
 
     /// Drops candidates in the wrong script and restores a lost leading tag. All dropped → error.
