@@ -1,7 +1,7 @@
 # be-nice 当前状态
 
 > 每次更新**覆盖重写**，只写当前事实，不追加历史。历史见 git log 与 [docs/archive/](docs/archive/)。
-> 更新：2026-10-27 22:40 AEDT
+> 更新：2026-10-27 23:45 AEDT
 
 ## 阶段：S3 Slack 专项回归（已跑一轮，有失败项，未交付）
 
@@ -23,6 +23,7 @@
 - 修法：Slack 写入改用 U+2028。capture 时记下输入框段落结构，撤销按原结构用 U+2028 重建；替换把建议里每个 `\n` 写成 U+2028（单换行是软换行，空一行是空段）。读回按 Slack 的 AXValue 规律算期望值，并把写入后约 0.2 s 内的原串（U+2028 还在）当作“还没生效”。结构读不到或对不上 AXValue 时只给 Copy rewrite。
 - 实测：Shift+Return 三行、三段空行、单行、线程两行，都能 Replace，撤销后子树和截图与原草稿一致。一条授权测试消息 `[be-nice test] u2028 check` 已发到 #all-mingfangtech：显示为两行软换行，AX 读回全是 ASCII，没有 U+2028。
 - 同一 PR 还修了：AXRole 读不到时 role/subrole 数组错位导致误放行替换（ad9139d）。
+- 第三轮（7.6，提交 4c4154c）：独立 review 的 5 条意见已修：读回和撤销还比对段落结构；撤销等一次 Slack 拆段；候选里的其他换行符和零宽字符已处理；单测按实测值。真实 Slack：Shift+Return 三行、空行三段替换后撤销都还原（23:39–23:41）。结构不一致探测因 LCU 够不到改写面板未做，由单测覆盖。
 - 关于 PLAN 的 Slack 说明（按协调者要求记在这里，不改 PLAN）：Shift+Return 和空行草稿现在保留原结构直接替换。U+2028 只在写入时用，Slack 存的是普通段落，发出去是普通换行。
 
 仍失败（未修，修法见证据文件“修复建议”）：
@@ -42,6 +43,7 @@
 
 - 界面文案英文；三个风格（默认 Polite / Shorter / Friendly）可在设置页编辑，存 `be-nice.styleSlots`。
 - 设置页两种 provider：GitHub Copilot（用本机 `gh auth token`，App 不存 token）与 Custom（OpenAI 兼容）。全新安装不默认走任何 provider，Save 后才发请求。
+- **只支持 Slack**（用户 10-27 22:49 决定，已写进 PLAN）：`TriggerPolicy` 与 `WriteBackPolicy` 允许列表只留 Slack，其他 App 不出入口；选区模式代码保留但无 App 使用。
 - 安全写回核心 `WriteBack.swift`：替换/撤销前复核同一进程、同一输入框、原文未变、窗口标题未变。富内容检测（修复 A、C 后）：段落结构读不到或与 AXValue 对不上的草稿，emoji、链接、按钮、列表（AXList），一段被切成多段文字（提及胶囊、行内格式），以及子节点 subrole 以 `StyleGroup` 结尾（加粗、行内代码等）。
 - 入口按钮贴 Slack 输入区右上角外侧；`TriggerPolicy.maxAncestorDepth` = 24（修复 A；频道输入框 AXWebArea 在第 16 层，线程在第 18 层）。
 
@@ -56,6 +58,6 @@
 ## 下一步
 
 1. 修复 A 的 PR #10：第三轮 review 意见已处理，待协调者确认后合并。
-2. 修复 C 的 PR #11（含 U+2028 写回）：待独立 review 后合并。
+2. 修复 C 的 PR #11（含 U+2028 写回、第三轮 review 修复、只支持 Slack）：待对第三轮改动做独立 review 后合并。
 3. 保持原文语言、保留方括号前缀（另一 worker 负责）修完后，重跑私聊用例（D1）。
 4. 真 IME 组字测试需要用户在场切输入法。

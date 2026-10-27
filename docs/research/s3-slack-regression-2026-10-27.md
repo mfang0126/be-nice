@@ -260,3 +260,26 @@ Undo 走状态胶囊：先点 Slack 的 Messages 标签让输入框失焦，再�
 **已知限制**：空格-only 的段落按文字段处理（未实测）；结构变化检查只比第 0 层。
 
 清理：频道、线程输入框为空（AX 读回只剩一个空段）；DM 未碰（侧栏 “Drafts & sent 1” 不变）；开始时频道输入框里有一个空的有序列表 “1.”（无文字，前一轮列表测试留下），已在测试中清掉；`~/Applications/.be-nice-install.*` 已删；临时诊断日志代码已删除、未提交。除上面一条授权消息外未发送任何消息。GUI 使用时段 22:24–22:36。
+
+### 7.6 第三轮：review 意见 + 只支持 Slack（23:39–23:41，分支 `mfang0126/be-nice-fix-linebreaks`，提交 4c4154c）
+
+**代码（`WriteBack.swift`、`TriggerController.swift`）**
+1. 读回在 Slack 上除了字符串，还要求段落结构等于写入的结构；不等就按 `writeUnexpected` 报，保留撤销/可能写入记录。替换时 Slack 自己排错结构，撤销以实际结构为准，仍能还原。
+2. 撤销前如果 Slack 还显示写入的原串（U+2028 未拆段），最多等一次 `readBackTimeout`；仍未拆段就当作替换后的值处理，不再误报 “The draft changed”。
+3. 撤销前比对替换后的段落结构：用户加了或删了空段（AXValue 不变）就拒绝。“已经是原文”的捷径也要求结构等于原结构。
+4. 模型候选里 U+2029、U+0085、CR、CRLF 按换行处理，零宽字符（U+200B–U+200D、U+FEFF）删掉；只含零宽字符的候选按空建议拒绝。用户原文撤销时原样写回（含零宽字符）。
+5. 新单测按 7.4/7.5 的实测写入→（AXValue, 结构）表驱动（不再用被测的 `slackValue` 推算），另有一条待定时间长于超时的用例。
+6. 用户 22:49 决定只支持 Slack：两处允许列表只留 Slack，选区模式代码保留但没有 App 走到。通用核心单测通过注入的测试策略继续跑 TextEdit/Safari/Electron；新增断言默认策略拒绝 TextEdit、Notes、Safari、Chrome、Electron；TriggerTests 原“支持”断言改为“不支持”。
+- 每项修复在 scratch worktree 里去掉后对应新单测失败（1: 6 条，2: 4 条，3: 3 条，4: 7 条，只支持 Slack: WriteBack 15 条、Trigger 13 条），worktree 已删。`run-tests.sh` ALL PASS。
+
+**真实 Slack 复测**（安装版 4c4154c，debug-status = 0，频道 #all-mingfangtech 主输入框；读回用只读 AX 转储（AXValue + 第 0 层子节点）+ 截图）
+
+| # | 草稿 | 替换后 | 撤销后 | 结论 |
+|---|---|---|---|---|
+| A | Shift+Return 三行 `[be-nice test] r3 soft one / soft two / soft three`，段/段/段 | Polite 单段，状态 Replaced | 段/段/段，AXValue 逐字一致，截图三行紧挨，状态 Restored | 通过 |
+| B | 段间 Shift+Return ×2 `[be-nice test] r3 block one / block two / block three`，段/空/段/空/段 | Polite 单段 | 段/空/段/空/段，AXValue 逐字一致，截图两处空行，状态 Restored | 通过 |
+| C | 结构不一致探测 | — | — | **未做**：LCU 只看到 be-nice 的按钮窗口，够不到改写面板，无法把卡片改成两行软换行；单段替换后插入任何空段都会改变 AXValue，测不到“只改结构”。由单测 33/35 覆盖。 |
+
+- 卡片未手改，两次都用 ⌘⏎ 替换 Polite 卡。焦点时段内 Orca 两次抢回前台，`open -a Slack` 后重试即可。
+- TextEdit 上不出 Rewrite 的实测按协调者要求取消（不碰 TextEdit）；只有单测覆盖。
+- 清理：频道和线程输入框为空（AX 读回只有一个空段）；DM 未碰；未发送任何消息。GUI 使用 23:39–23:41。
