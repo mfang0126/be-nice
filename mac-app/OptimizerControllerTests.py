@@ -160,6 +160,11 @@ harness += r'''
         controller.cancelPreview()
         try? await Task.sleep(for: .milliseconds(300))
         precondition(controller.statusWindow.reanchored.isEmpty, "cancel must stop the re-anchor")
+        // An unreadable (empty) refresh leaves the pill where it is.
+        let steady = Controller()
+        steady.showStatus("Restored", anchor: stale, refresh: { .zero })
+        try? await Task.sleep(for: .milliseconds(300))
+        precondition(steady.statusWindow.reanchored.isEmpty, "empty refresh must not move the pill")
         print("OptimizerControllerTests PASS (8 failed-apply/cancel scenarios, live-rect pills)")
     }
 }

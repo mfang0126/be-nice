@@ -255,7 +255,8 @@ final class OptimizerController {
         reanchor = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
-            self?.statusWindow.reanchor(refresh())
+            let rect = refresh()
+            if !rect.isEmpty { self?.statusWindow.reanchor(rect) }  // unreadable: keep the pill where it is
         }
     }
 }

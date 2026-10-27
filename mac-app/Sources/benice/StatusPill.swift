@@ -122,9 +122,9 @@ final class RewriteStatusController {
         panel.setFrame(f, display: true)
     }
 
-    /// Moves a visible pill to a re-measured anchor; never shows a hidden one.
+    /// Moves a visible pill to a re-measured anchor; never shows a hidden one, never jumps on an unreadable rect.
     func reanchor(_ target: CGRect) {
-        guard panel.isVisible else { return }
+        guard panel.isVisible, !target.isEmpty else { return }
         place(target, size: panel.frame.size)
     }
 
