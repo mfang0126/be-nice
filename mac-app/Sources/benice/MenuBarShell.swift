@@ -101,13 +101,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // settings and for Cmd-, while a be-nice window is key.
         let main = NSMenu()
         let appItem = NSMenuItem()
-        let appMenu = NSMenu(title: "be-nice")
+        let appMenu = NSMenu(title: "Be Nice")
         let settings = NSMenuItem(title: "Settings…", action: #selector(openModelSettings),
                                   keyEquivalent: ",")
         settings.target = self
         appMenu.addItem(settings)
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit be-nice", action: #selector(NSApplication.terminate(_:)),
+        appMenu.addItem(withTitle: "Quit Be Nice", action: #selector(NSApplication.terminate(_:)),
                         keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
@@ -165,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         menu.addItem(undo)
 
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit be-nice",
+        let quit = NSMenuItem(title: "Quit Be Nice",
                               action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
         menu.addItem(quit)
@@ -206,14 +206,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let symbol = tracker.state == .revoked
             ? "exclamationmark.triangle.fill"
             : "wand.and.stars"
-        let label = "be-nice — \(statusText)"
+        let label = "Be Nice — \(statusText)"
         if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label) {
             image.isTemplate = true
             statusItem.button?.image = image
             statusItem.button?.title = ""
         } else {
             statusItem.button?.image = nil
-            statusItem.button?.title = "be-nice"
+            statusItem.button?.title = "Be Nice"
         }
         statusItem.button?.toolTip = label
         statusItem.button?.setAccessibilityLabel(label)
