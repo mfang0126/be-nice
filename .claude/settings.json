@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && printf '## Re-injected after compaction\\n\\n' && cat STATUS.md && printf '\\n## git status --short\\n' && git status --short && printf '\\n## Last 5 commits\\n' && git log --oneline -5 2>/dev/null || true",
+            "timeout": 10,
+            "statusMessage": "Restoring project status after compaction"
+          }
+        ]
+      }
+    ]
+  }
+}
