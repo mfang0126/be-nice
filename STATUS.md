@@ -1,7 +1,7 @@
 # be-nice 当前状态
 
 > 每次更新**覆盖重写**，只写当前事实，不追加历史。历史见 git log 与 [docs/archive/](docs/archive/)。
-> 更新：2026-10-27 11:15 AEDT
+> 更新：2026-10-27 14:00 AEDT
 
 ## 阶段：S1 Slack 安全写回（私聊已跑通，未交付）
 
@@ -26,8 +26,9 @@
 
 ## 代码现状
 
-- 界面文案全部英文（Direct / Friendly / Clear）。
-- 改写窗口：设计 B「并排对比」，Slack 配色（入口茄子紫、替换绿、选中蓝）；“想怎么改”输入框已留位置（隐藏）。
+- 界面文案全部英文。三个风格位置可配置（默认 Direct / Friendly / Clear，存 UserDefaults `be-nice.styleSlots`），默认选中第一张。
+- 改写窗口：设计 B「并排对比」，Slack 配色；原稿整宽浅灰框（最多 5 行，按真实排版测高）。
+- 体验改进第 2 项与 2b 已完成（10-27 14:00，未在 Slack 里实测）：卡片风格名下拉换风格（6 预设 + 自写一句，只重写该卡片，成功后记入该位置）；“How should it change?” 一行微调，只重写选中卡片。DeepInfra 实测：三张 1.8 s、单张换风格 1.0 s、微调 0.7 s。Orca run `run_69e7a11e6a69`（两个 Sonnet worker）+ 独立 review 5 条均已修。
 - 入口按钮贴 Slack 输入区盒子右上角外侧；状态胶囊同一行左对齐，32 pt 同高。
 - 安全写回核心 `WriteBack.swift`；Slack 已加入两份允许列表。
 - 开发版 API key 读 `~/Library/Application Support/be-nice/dev-api-key`（0600，仅 DEBUG 编译），避免每次重编译弹 Keychain 密码；正式版只用 Keychain。
@@ -41,6 +42,8 @@
 
 ## 下一步
 
-1. 中文/英文普通草稿多跑几次私聊闭环，验证提及和链接被识别为富内容。
-2. 频道与线程（S3）。
-3. 同一会话标题变化导致的误拒绝，按实测决定是否放宽。
+1. 用户在 Slack 私聊实测换风格与微调。
+2. 体验改进第 3 项：设置页两种 provider（Custom / GitHub Copilot 用 `gh` 登录），三个风格位置也可在设置里改；Copilot 默认模型待用户确认（倾向 gpt-4o-mini）。
+3. 中文/英文普通草稿多跑几次私聊闭环，验证提及和链接被识别为富内容。
+4. 频道与线程（S3）。
+5. 同一会话标题变化导致的误拒绝，按实测决定是否放宽。

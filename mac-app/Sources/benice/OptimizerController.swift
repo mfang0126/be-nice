@@ -12,6 +12,16 @@ final class OptimizerController {
     private var generation: UInt64 = 0
     private var busy = false
     private let statusWindow = RewriteStatusController()
+    // What the open rewrite window was built from, for one-card restyle/tweak.
+    private var shown: (client: ModelClient, original: String, options: [RewriteOption], slots: [Int])?
+    private var regenerate: Task<Void, Never>?
+
+    init() {
+        previewWindow.onRestyle = { [weak self] index, style in self?.regenerate(index, style: style, tweak: nil) }
+        previewWindow.onTweak = { [weak self] index, tweak, current in
+            self?.regenerate(index, style: nil, tweak: (tweak, current))
+        }
+    }
 
     func trigger(_ target: TriggerController.Target) {
         guard !busy else { return }
@@ -46,7 +56,7 @@ final class OptimizerController {
                 return
             }
             pending = core
-            let options = try await client.rewriteOptions(text: captured.original)
+            let options = try await client.rewriteOptions(text: captured.original, styles: StyleSlots.load())
             guard generation == token, !Task.isCancelled else { return }
             let validationFailure = await core.validatePreparedTarget()
             guard generation == token, !Task.isCancelled else { return }
@@ -54,6 +64,7 @@ final class OptimizerController {
             let screen = NSScreen.screens.first { $0.frame.intersects(target.anchorRect) } ?? NSScreen.main
             guard let screen else { return fail("Couldn't find the screen for this window.", token: token) }
             statusWindow.hide()
+            shown = (client, captured.original, options, Self.slotIndices(options, in: StyleSlots.load()))
             previewWindow.present(original: captured.original,
                 appName: NSRunningApplication(processIdentifier: target.pid)?.localizedName ?? target.bundleID,
                 options: options, screenFrame: screen.frame,
@@ -63,6 +74,48 @@ final class OptimizerController {
         } catch {
             guard !Task.isCancelled else { return }
             fail(error.localizedDescription, token: token)
+        }
+    }
+
+    /// Rewrites one card: a new style (remembered for its slot) or a tweak of the card's current text.
+    private func regenerate(_ index: Int, style newStyle: RewriteStyle?, tweak: (String, String)?) {
+        guard !busy, regenerate == nil, let shown, shown.options.indices.contains(index) else { return }
+        let token = generation
+        let oldStyle = shown.options[index].style
+        let style = newStyle ?? oldStyle
+        previewWindow.setRegenerating(index)
+        regenerate = Task { [weak self] in
+            do {
+                let text = try await shown.client.rewriteOne(original: shown.original, style: style,
+                                                             current: tweak?.1, instruction: tweak?.0)
+                guard let self, self.generation == token, !Task.isCancelled else { return }
+                self.regenerate = nil
+                let option = RewriteOption(style: style, text: text)
+                if let newStyle {
+                    var slots = StyleSlots.load()
+                    slots[shown.slots[index]] = newStyle
+                    StyleSlots.save(slots)
+                }
+                self.shown?.options[index] = option
+                self.previewWindow.updateOption(index, option)
+            } catch {
+                guard let self, self.generation == token, !Task.isCancelled else { return }
+                self.regenerate = nil
+                self.previewWindow.setRegenerating(nil)
+                self.previewWindow.showError(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Options arrive in slot order and dedupe keeps the earliest slot, so match each card to the
+    /// next slot holding its style. ponytail: a model that skips a slot whose style repeats
+    /// later can shift one card's slot; add slot ids to RewriteOption if that ever matters.
+    private static func slotIndices(_ options: [RewriteOption], in slots: [RewriteStyle]) -> [Int] {
+        var next = 0
+        return options.map { option in
+            let slot = slots[next...].firstIndex(of: option.style) ?? min(next, slots.count - 1)
+            next = min(slot + 1, slots.count - 1)
+            return slot
         }
     }
 
@@ -137,6 +190,9 @@ final class OptimizerController {
         generation &+= 1
         request?.cancel()
         request = nil
+        regenerate?.cancel()
+        regenerate = nil
+        shown = nil
         if let core = pending { Task { await core.cancel() } }
         pending = nil
         pendingTarget = nil

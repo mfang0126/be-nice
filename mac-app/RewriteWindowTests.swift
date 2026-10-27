@@ -10,9 +10,10 @@ struct RewriteWindowTests {
             if !condition { failures += 1; print("SELFTEST FAIL: \(message)") }
         }
         let controller = RewriteWindowController(presentsWindows: false, copyText: { _ in true })
-        let options = [RewriteOption(style: .direct, text: "First option"),
-                       RewriteOption(style: .friendly, text: "Second option"),
-                       RewriteOption(style: .clear, text: "第三种表达\n保留事实。")]
+        let presets = RewriteStyle.presets
+        let options = [RewriteOption(style: presets[0], text: "First option"),
+                       RewriteOption(style: presets[1], text: "Second option"),
+                       RewriteOption(style: presets[2], text: "第三种表达\n保留事实。")]
         let frame = NSRect(x: -1200, y: 0, width: 1200, height: 800)
         var submissions: [String] = []
         var cancellations = 0
@@ -152,7 +153,7 @@ struct RewriteWindowTests {
         present()
         expect(card(0).accessibilityRole() == .radioButton, "card exposes radio button role")
         expect((card(0).accessibilityValue() as? Int) == 1 && (card(1).accessibilityValue() as? Int) == 0, "card value reflects selection")
-        expect((card(1).accessibilityLabel() ?? "").contains("Friendly") && (card(1).accessibilityLabel() ?? "").contains("teammates"), "card label is style plus hint")
+        expect((card(1).accessibilityLabel() ?? "").contains("Friendly") && (card(1).accessibilityLabel() ?? "").contains("Relaxed"), "card label is style plus hint")
         pick(2)
         expect((card(2).accessibilityValue() as? Int) == 1 && (card(1).accessibilityValue() as? Int) == 0, "value refreshes on selection change")
         _ = controller.window!.makeFirstResponder(card(1))
@@ -184,12 +185,80 @@ struct RewriteWindowTests {
         key(53, "\u{1b}")
         expect(cancellations == 5, "Esc cancels again once composition ends")
         controller.dismiss()
-        let longOption = RewriteOption(style: .direct, text: String(repeating: "很长的改写内容。", count: 200))
+        let longOption = RewriteOption(style: presets[0], text: String(repeating: "很长的改写内容。", count: 200))
         controller.present(original: String(repeating: "很长的原文。", count: 300), appName: "Fixture", options: [longOption],
                            screenFrame: frame, onSubmit: { _ in }, onCancel: {})
         controller.window!.contentView!.layoutSubtreeIfNeeded()
         expect(root.bounds.contains(button("primary").convert(button("primary").bounds, to: root)), "long content keeps footer on screen")
         expect(editor().string.count == longOption.text.count, "long option is not truncated")
+        controller.dismiss()
+
+        // Restyle menu, tweak field and one-card regeneration.
+        var restyles: [(Int, RewriteStyle)] = []
+        var tweaks: [(Int, String, String)] = []
+        controller.onRestyle = { restyles.append(($0, $1)) }
+        controller.onTweak = { tweaks.append(($0, $1, $2)) }
+        present()
+        func styleButton(_ i: Int) -> NSButton { button("style-\(i)") }
+        func tweakField() -> NSTextField {
+            descendants(controller.window!.contentView!).first { $0.identifier?.rawValue == "rewrite-tweak" } as! NSTextField
+        }
+        func choose(_ item: NSMenuItem) { _ = NSApp.sendAction(item.action!, to: item.target, from: item) }
+        let menu = styleButton(1).menu!
+        expect(menu.items.map(\.title) == presets.map(\.name) + ["", "Describe your own…"], "menu lists presets, separator, custom")
+        expect(menu.items[1].state == .on && menu.items[0].state == .off, "current style is checked")
+        expect(styleButton(1).attributedTitle.string == "Friendly ▾", "title is a pull-down button")
+        expect(!tweakField().isHidden && tweakField().placeholderString == "How should it change? e.g. more polite, shorter", "tweak field visible")
+        choose(menu.items[1])
+        expect(restyles.isEmpty, "current style does nothing")
+        choose(menu.items[4])
+        expect(restyles.count == 1 && restyles[0].0 == 1 && restyles[0].1 == presets[4], "preset calls onRestyle with card index")
+        controller.restyleCustom(2, "  \(String(repeating: "x", count: 300))  ")
+        expect(restyles.count == 2 && restyles[1].0 == 2 && restyles[1].1.name == "Custom"
+               && restyles[1].1.instruction.count == RewriteStyle.maxInstructionLength, "custom style trimmed and truncated")
+        controller.restyleCustom(2, "   ")
+        expect(restyles.count == 2, "blank custom style ignored")
+        // Tweak
+        let plain = NSTextView()
+        let enter = #selector(NSResponder.insertNewline(_:))
+        pick(1)
+        editor().string = "Edited second"
+        tweakField().stringValue = "  more polite  "
+        expect(controller.control(tweakField(), textView: plain, doCommandBy: enter), "Return in tweak field handled")
+        expect(tweaks.count == 1 && tweaks[0] == (1, "more polite", "Edited second"), "tweak sends selected index, text and edited card text")
+        expect(tweakField().stringValue == "  more polite  ", "tweak text kept until the rewrite succeeds")
+        controller.updateOption(1, RewriteOption(style: RewriteStyle.presets[1], text: "Edited second"))
+        expect(tweakField().stringValue.isEmpty, "tweak field cleared after success")
+        tweakField().stringValue = "   "
+        _ = controller.control(tweakField(), textView: plain, doCommandBy: enter)
+        expect(tweaks.count == 1, "blank tweak ignored")
+        class Marked: NSTextView { override func hasMarkedText() -> Bool { true } }
+        tweakField().stringValue = "composing"
+        expect(!controller.control(tweakField(), textView: Marked(), doCommandBy: enter) && tweaks.count == 1
+               && tweakField().stringValue == "composing", "marked text blocks submit")
+        tweakField().stringValue = ""
+        _ = controller.window!.makeFirstResponder(tweakField())
+        key(124, "\u{f703}")
+        expect(card(1).isAccessibilitySelected(), "arrow keys do not switch cards while tweak field has focus")
+        _ = controller.window!.makeFirstResponder(nil)
+        // Regeneration
+        controller.setRegenerating(1)
+        expect(editor().string == "Rewriting…" && !editor().isEditable, "regenerating card shows placeholder, not editable")
+        expect(!button("primary").isEnabled && !styleButton(0).isEnabled && !styleButton(1).isEnabled && !tweakField().isEnabled,
+               "regenerating disables primary, menus and tweak field")
+        expect(button("cancel").isEnabled, "Cancel stays enabled while regenerating")
+        key(36, "\r", modifiers: .command)
+        controller.restyleCustom(0, "ignored")
+        expect(submissions.count == 1 && restyles.count == 2, "no submit or restyle while regenerating")
+        controller.setRegenerating(nil)
+        expect(editor().string == "Edited second" && editor().isEditable && button("primary").isEnabled && tweakField().isEnabled,
+               "setRegenerating(nil) restores text and controls")
+        controller.setRegenerating(1)
+        controller.updateOption(1, RewriteOption(style: presets[3], text: "Shorter text"))
+        expect(editor().string == "Shorter text" && editor().isEditable, "updateOption swaps text and ends regenerating")
+        expect(card(1).isAccessibilitySelected(), "updateOption keeps selection")
+        expect(styleButton(1).attributedTitle.string == "Shorter ▾" && styleButton(1).menu!.items[3].state == .on, "updateOption swaps style name and checkmark")
+        expect(button("primary").title == "Replace with Shorter" && button("primary").isEnabled, "primary follows new style")
         controller.dismiss()
         if failures == 0 { print("RewriteWindowTests PASS"); exit(0) }
         print("RewriteWindowTests FAILED (\(failures) assertion(s))")

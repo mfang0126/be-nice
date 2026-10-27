@@ -96,13 +96,16 @@ private final class RewriteCard: NSView {
     let text = RewriteTextView()
     let scroll = NSScrollView()
     var onPick: (() -> Void)?
+    let styleButton = NSButton()
+    private let hintLabel = NSTextField(wrappingLabelWithString: "")
     private let radio = NSView()
-    private let name: String
+    private var name = ""
     private var chosen = false
     private var enabled = true
+    private var savedText: String?
+    var isRegenerating: Bool { savedText != nil }
 
-    init(name: String, hint: String, body: String) {
-        self.name = name
+    init(style: RewriteStyle, body: String) {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 14
@@ -112,11 +115,11 @@ private final class RewriteCard: NSView {
         radio.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([radio.widthAnchor.constraint(equalToConstant: 18),
                                      radio.heightAnchor.constraint(equalToConstant: 18)])
-        let title = NSTextField(labelWithString: name)
-        title.font = .systemFont(ofSize: 14, weight: .bold)
-        title.textColor = Palette.primaryText
-        title.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let hintLabel = NSTextField(wrappingLabelWithString: hint)
+        styleButton.isBordered = false
+        styleButton.alignment = .left
+        styleButton.target = self
+        styleButton.action = #selector(showStyleMenu)
+        styleButton.setContentHuggingPriority(.defaultLow, for: .horizontal)
         hintLabel.font = .systemFont(ofSize: 12)
         hintLabel.textColor = Palette.hint
         hintLabel.isSelectable = false
@@ -137,7 +140,7 @@ private final class RewriteCard: NSView {
         scroll.borderType = .noBorder
         scroll.wantsLayer = true
         scroll.layer?.cornerRadius = 8
-        let titleRow = NSStackView(views: [title, radio])
+        let titleRow = NSStackView(views: [styleButton, radio])
         let stack = NSStackView(views: [titleRow, hintLabel])
         stack.orientation = .vertical
         stack.alignment = .width
@@ -156,14 +159,48 @@ private final class RewriteCard: NSView {
             scroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
             scroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             scroll.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10)])
+        configure(style: style, menu: nil)
         setAccessibilityRole(.radioButton)
-        setAccessibilityLabel("\(name), \(hint)")
         focusRingType = .exterior
         apply(chosen: false, enabled: true)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    func configure(style: RewriteStyle, menu: NSMenu?) {
+        name = style.name
+        styleButton.attributedTitle = NSAttributedString(string: "\(style.name) ▾", attributes: [
+            .font: NSFont.systemFont(ofSize: 14, weight: .bold), .foregroundColor: Palette.primaryText])
+        styleButton.setAccessibilityLabel("\(style.name), change style")
+        styleButton.menu = menu
+        hintLabel.stringValue = style.instruction
+        setAccessibilityLabel("\(style.name), \(style.instruction)")
+    }
+
+    func setStyleEnabled(_ on: Bool) {
+        styleButton.isEnabled = on
+        styleButton.alphaValue = on ? 1 : 0.45
+    }
+
+    func beginRegenerating() {
+        guard savedText == nil else { return }
+        savedText = text.string
+        text.string = "Rewriting…"
+        apply(chosen: chosen, enabled: enabled)
+    }
+
+    /// Without `newText` the pre-regeneration text comes back (failure path).
+    func endRegenerating(newText: String? = nil) {
+        if let newText { text.string = newText } else if let savedText { text.string = savedText }
+        savedText = nil
+        apply(chosen: chosen, enabled: enabled)
+    }
+
+    @objc private func showStyleMenu() {
+        guard let menu = styleButton.menu else { return }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: styleButton.bounds.height + 2), in: styleButton)
+    }
 
     func apply(chosen: Bool, enabled: Bool) {
         let changed = self.chosen != chosen
@@ -175,11 +212,11 @@ private final class RewriteCard: NSView {
         radio.layer?.borderWidth = chosen ? 5 : 1.5
         radio.layer?.borderColor = (chosen ? Palette.accent : rgb(0xB8B8BE)).cgColor
         radio.layer?.backgroundColor = NSColor.white.cgColor
-        text.isEditable = chosen && enabled
+        text.isEditable = chosen && enabled && !isRegenerating
         text.isSelectable = chosen
         text.drawsBackground = chosen
         text.backgroundColor = Palette.editing
-        text.textColor = chosen ? Palette.primaryText : Palette.secondaryText
+        text.textColor = isRegenerating ? Palette.hint : chosen ? Palette.primaryText : Palette.secondaryText
         text.setAccessibilityLabel(chosen ? "Edit rewrite" : "\(name) full text")
         alphaValue = enabled ? 1 : 0.7
     }
@@ -190,6 +227,7 @@ private final class RewriteCard: NSView {
     /// Unselected cards swallow every click (and scroll) so the whole card acts as one button.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)
+        if let hit, hit === styleButton, styleButton.isEnabled { return hit }
         return hit != nil && !chosen ? self : hit
     }
     override func mouseDown(with event: NSEvent) { if enabled { onPick?() } }
@@ -207,14 +245,13 @@ private final class RewriteCard: NSView {
 }
 
 @MainActor
-final class RewriteWindowController: NSWindowController, NSWindowDelegate {
+final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
     private let originalView = RewriteWindowController.staticTextView()
     private let status = RewriteWindowController.staticTextView()
     private let cancelButton = RewriteButton(title: "Cancel", primary: false)
     private let primaryButton = RewriteButton(title: "Replace", primary: true)
     private let panel = NSView()
     private let cardsRow = NSStackView()
-    // Reserved for the single-line "How should it change?" instruction field; hidden and unwired (PLAN「试用版之后第一项」).
     private let instructionSlot = NSView()
     private let instructionField = NSTextField()
     private var originalHeight: NSLayoutConstraint!
@@ -225,15 +262,18 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
     private let copyText: (String) -> Bool
     private var copyOnlyReason: String?
     private let copyOnlyHelp = "You can view, edit or copy this rewrite, but not replace."
-    private let hintText = "←→ switch · edit the selected card · ⌘↩ replace · esc close · undo available, nothing is sent"
+    private let hintText = "Click a style name to swap it · edit the card or say how it should change · ⌘↩ replace · esc close · nothing is sent"
     private var options: [RewriteOption] = []
     private var selected = 0
     private var notice: String?
     private var noticeIsError = false
     private var busy = false
+    private var regenerating: Int?
     private var active = false
     private var submitAction: ((String) -> Void)?
     private var cancelAction: (() -> Void)?
+    var onRestyle: ((Int, RewriteStyle) -> Void)?
+    var onTweak: ((Int, String, String) -> Void)?
 
     init(presentsWindows: Bool = true, copyText: @escaping (String) -> Bool = { text in
         NSPasteboard.general.clearContents()
@@ -265,6 +305,8 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         self.options = Array(options.prefix(3))
         selected = 0
         notice = nil
+        regenerating = nil
+        instructionField.stringValue = ""
         active = true
         submitAction = onSubmit
         cancelAction = onCancel
@@ -303,6 +345,25 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
                              userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue])
     }
 
+    /// Marks one card as being rewritten (nil ends it, restoring that card's previous text).
+    func setRegenerating(_ index: Int?) {
+        if let old = regenerating, old != index, cards.indices.contains(old) { cards[old].endRegenerating() }
+        regenerating = index.flatMap { cards.indices.contains($0) ? $0 : nil }
+        if let regenerating { cards[regenerating].beginRegenerating() }
+        updateControls()
+    }
+
+    /// Replaces one card's style and text, ends regeneration and keeps the selection.
+    func updateOption(_ index: Int, _ option: RewriteOption) {
+        guard options.indices.contains(index), cards.indices.contains(index) else { return }
+        options[index] = option
+        cards[index].configure(style: option.style, menu: styleMenu(for: index))
+        cards[index].endRegenerating(newText: option.text)
+        instructionField.stringValue = ""  // kept until success so a failed tweak needn't be retyped
+        if regenerating == index { regenerating = nil }
+        updateControls()
+    }
+
     func setBusy(_ busy: Bool) {
         self.busy = busy
         notice = nil
@@ -333,18 +394,21 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
 
     private func updateControls() {
         let usable = active && !busy
+        let interactive = usable && regenerating == nil
         for (index, card) in cards.enumerated() {
             card.apply(chosen: index == selected, enabled: usable)
             card.text.identifier = NSUserInterfaceItemIdentifier(index == selected ? "rewrite-editor" : "rewrite-text-\(index)")
         }
         cancelButton.isEnabled = usable
+        for card in cards { card.setStyleEnabled(interactive) }
+        instructionField.isEnabled = interactive && !options.isEmpty
         if copyOnlyReason != nil {
             primaryButton.title = "Copy rewrite"
         } else {
-            let name = options.indices.contains(selected) ? Self.label(options[selected].style) : ""
+            let name = options.indices.contains(selected) ? options[selected].style.name : ""
             primaryButton.title = name.isEmpty ? "Replace" : "Replace with \(name)"
         }
-        primaryButton.isEnabled = usable && !options.isEmpty
+        primaryButton.isEnabled = interactive && !options.isEmpty
         var parts: [String] = []
         if busy { parts.append("Checking and replacing…") }
         else if let notice { parts.append(notice) }
@@ -368,7 +432,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
 
     /// The only path that reports text to the caller; copy-only mode can never reach it.
     @objc private func submit() {
-        guard active, !busy, copyOnlyReason == nil, cards.indices.contains(selected) else { return }
+        guard active, !busy, regenerating == nil, copyOnlyReason == nil, cards.indices.contains(selected) else { return }
         let text = cards[selected].text.string
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             showError("Enter some text first.")
@@ -380,7 +444,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func copyCandidate() {
-        guard active, !busy, cards.indices.contains(selected) else { return }
+        guard active, !busy, regenerating == nil, cards.indices.contains(selected) else { return }
         let copied = copyText(cards[selected].text.string)
         setNotice(copied ? "Copied." : "Copy failed. Try again.", isError: !copied)
     }
@@ -430,10 +494,78 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         return false
     }
 
+    private func styleMenu(for index: Int) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for preset in RewriteStyle.presets {
+            let item = NSMenuItem(title: preset.name, action: #selector(pickStyle(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.representedObject = preset
+            item.state = options[index].style == preset ? .on : .off
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let custom = NSMenuItem(title: "Describe your own…", action: #selector(describeOwn(_:)), keyEquivalent: "")
+        custom.target = self
+        custom.tag = index
+        menu.addItem(custom)
+        return menu
+    }
+
+    @objc private func pickStyle(_ item: NSMenuItem) {
+        guard let style = item.representedObject as? RewriteStyle else { return }
+        restyle(item.tag, style)
+    }
+
+    private func restyle(_ index: Int, _ style: RewriteStyle) {
+        guard active, !busy, regenerating == nil, options.indices.contains(index),
+              options[index].style != style else { return }
+        onRestyle?(index, style)
+    }
+
+    @objc private func describeOwn(_ item: NSMenuItem) {
+        let index = item.tag
+        guard presentsWindows, let window else { return }
+        let alert = NSAlert()
+        alert.messageText = "Describe your own style"
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.placeholderString = "e.g. Polite English, under 2 sentences"
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn { self?.restyleCustom(index, field.stringValue) }
+        }
+    }
+
+    func restyleCustom(_ index: Int, _ text: String) {
+        let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !line.isEmpty else { return }
+        restyle(index, RewriteStyle(name: "Custom", instruction: String(line.prefix(RewriteStyle.maxInstructionLength))))
+    }
+
+    /// Return in the tweak field submits unless the input method is composing.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard selector == #selector(NSResponder.insertNewline(_:)) else { return false }
+        if textView.hasMarkedText() { return false }
+        submitTweak()
+        return true
+    }
+
+    private func submitTweak() {
+        let tweak = instructionField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard active, !busy, regenerating == nil, !tweak.isEmpty, cards.indices.contains(selected) else { return }
+        onTweak?(selected, tweak, cards[selected].text.string)
+    }
+
     private func rebuildCards() {
         for card in cards { cardsRow.removeArrangedSubview(card); card.removeFromSuperview() }
         cards = options.enumerated().map { index, option in
-            let card = RewriteCard(name: Self.label(option.style), hint: Self.hint(option.style), body: option.text)
+            let card = RewriteCard(style: option.style, body: option.text)
+            card.configure(style: option.style, menu: styleMenu(for: index))
+            card.styleButton.identifier = NSUserInterfaceItemIdentifier("style-\(index)")
             card.identifier = NSUserInterfaceItemIdentifier("card-\(index)")
             card.onPick = { [weak self] in self?.select(index, focusEditor: true) }
             card.translatesAutoresizingMaskIntoConstraints = false
@@ -470,7 +602,8 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         originalHeight.constant = originalH
         let cardTextWidth = (panelWidth - 88) / 3 - 32 - 20
         let wanted = 77 + 20 + (options.map { height($0.text, width: cardTextWidth, size: 16) }.max() ?? 0)
-        let room = screenFrame.height - 50 - (originalH + 67) - 72 - 48
+        // 50 = instruction row (48) plus its rule.
+        let room = screenFrame.height - 50 - (originalH + 67) - 72 - 48 - 50
         bodyHeight.constant = 48 + min(max(240, wanted), max(160, room))
     }
 
@@ -532,15 +665,23 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
                                spacing: 8, alignment: .leading, vertical: true)
         draftBox.widthAnchor.constraint(equalTo: header.widthAnchor, constant: -56).isActive = true
 
-        instructionSlot.isHidden = true
-        instructionField.placeholderString = "How should it change?"
+        instructionSlot.wantsLayer = true
+        instructionSlot.layer?.backgroundColor = Palette.body.cgColor
+        instructionField.placeholderString = "How should it change? e.g. more polite, shorter"
+        instructionField.font = .systemFont(ofSize: 14)
+        instructionField.usesSingleLineMode = true
+        instructionField.lineBreakMode = .byTruncatingTail
+        instructionField.delegate = self
+        instructionField.identifier = NSUserInterfaceItemIdentifier("rewrite-tweak")
+        instructionField.setAccessibilityLabel("How should it change?")
         instructionField.translatesAutoresizingMaskIntoConstraints = false
         instructionSlot.addSubview(instructionField)
         NSLayoutConstraint.activate([
             instructionField.leadingAnchor.constraint(equalTo: instructionSlot.leadingAnchor, constant: 28),
             instructionField.trailingAnchor.constraint(equalTo: instructionSlot.trailingAnchor, constant: -28),
             instructionField.topAnchor.constraint(equalTo: instructionSlot.topAnchor, constant: 12),
-            instructionField.bottomAnchor.constraint(equalTo: instructionSlot.bottomAnchor, constant: -12)])
+            instructionField.bottomAnchor.constraint(equalTo: instructionSlot.bottomAnchor, constant: -12),
+            instructionSlot.heightAnchor.constraint(equalToConstant: 48)])
 
         // Body: cards centered in an equal-thirds row.
         let body = NSView()
@@ -579,7 +720,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         let footer = Self.band([statusScroll, cancelButton, primaryButton],
                                insets: NSEdgeInsets(top: 14, left: 28, bottom: 14, right: 28), spacing: 10, alignment: .centerY)
 
-        let stack = NSStackView(views: [header, Self.rule(), instructionSlot, body, Self.rule(), footer])
+        let stack = NSStackView(views: [header, Self.rule(), instructionSlot, Self.rule(), body, Self.rule(), footer])
         stack.orientation = .vertical
         stack.spacing = 0
         stack.alignment = .width
@@ -629,22 +770,6 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         line.layer?.backgroundColor = Palette.line.cgColor
         line.heightAnchor.constraint(equalToConstant: 1).isActive = true
         return line
-    }
-
-    private static func label(_ style: RewriteStyle) -> String {
-        switch style {
-        case .direct: return NSLocalizedString("Direct", comment: "Direct rewrite style")
-        case .friendly: return NSLocalizedString("Friendly", comment: "Friendly rewrite style")
-        case .clear: return NSLocalizedString("Clear", comment: "Clear rewrite style")
-        }
-    }
-
-    private static func hint(_ style: RewriteStyle) -> String {
-        switch style {
-        case .direct: return "For busy readers: lead with the point"
-        case .friendly: return "For teammates: relaxed, not stiff"
-        case .clear: return "For anyone who needs it spelled out: one idea per sentence"
-        }
     }
 
     private static func staticTextView() -> NSTextView {
