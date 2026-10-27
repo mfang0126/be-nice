@@ -1,55 +1,49 @@
 # be-nice 当前状态
 
 > 每次更新**覆盖重写**，只写当前事实，不追加历史。历史见 git log 与 [docs/archive/](docs/archive/)。
-> 更新：2026-10-27 19:25 AEDT
+> 更新：2026-10-27 21:05 AEDT
 
-## 阶段：S1 Slack 安全写回（私聊已跑通，未交付）
+## 阶段：S3 Slack 专项回归（已跑一轮，有失败项，未交付）
 
-2026-10-27 09:46 在真实 Slack 私聊（自己）中由 be-nice 完整走通：Rewrite → 三张卡片 → 替换 → 独立读回 → 撤销精确恢复，未发送消息（替换由 LCU 点击，撤销由用户点击，读回均经 LCU AX 确认）。
+证据：[docs/research/s3-slack-regression-2026-10-27.md](docs/research/s3-slack-regression-2026-10-27.md)（20:47–21:01，真实 Slack，LCU 操作 + 独立 AX 读回，用户授权前台时段）。
 
-已解决的 S0 卡点：
-- 会话身份：替换/撤销前复核同一进程、同一输入框元素、原文未变、窗口标题未变（`Ming Fang (DM) - mingfang.tech - Slack`）。同名会话无法区分（已知限制）。
-- 入口不出现：输入框在 AXWebArea 下 10 层，祖先遍历从 8 层放宽到 16 层。
-- 替换报 focusChanged：Slack 关窗后把焦点还给网页而非输入框；复核通过后对原输入框元素设 AXFocused，写入后也把焦点留在输入框。
+通过：
+- 全新安装路径（PLAN 体验改进第 6 项）：清空开发版 UserDefaults 后点 Rewrite，只打开设置页，状态 “Choose where your drafts are sent. Nothing is sent until you Save.”；点 Test 之前 be-nice 子进程 `gh` 0 次、网络 0 行；Test（第 2 次点才发测试请求，1.2 s）→ Save → 三张卡正常。之后 UserDefaults 从备份恢复，`diff` 为空。
+- 私聊：中文粘贴、中文逐字输入、17 行长文的替换 + 读回 + 撤销（AX 字符串）都一致；带链接草稿识别为富内容，只给 Copy rewrite。
+- 频道 #all-mingfangtech 主输入框：中英文各一条，替换、读回、撤销逐字一致。
 
-仍未解决：
-1. 富内容（emoji/提及/链接）已检测：只给复制、写入前再拒绝。10-27 10:13 实测：纯文本草稿仍为 “Replace with Direct”，带 emoji 草稿变为 “Copy rewrite”；测试草稿已精确恢复。提及和链接的 AX 结构尚未在真实 Slack 中验证。
-2. 同一会话内窗口标题变化（如未读标记）会误拒绝替换，偏安全，待实测观察。
-3. 中文 IME、长文、频道和线程（S3）未测。
-4. 同一会话名重名无法区分（已知限制）。
+失败（未修，修法见证据文件“修复建议”）：
+1. 语言：一条中文草稿三张卡全变英文（另两条中文正常），违反 PLAN“保持原文语言”。
+2. 提及胶囊未被识别为富内容：给了直接替换，替换后提及变纯文本（一次连 @ 都没了）；撤销后胶囊恢复。
+3. 有序列表未被识别：直接替换；撤销后 AX 字符串一致，但界面上列表变普通段落（`1.The…`）。AX 字符串相等不能证明撤销精确。
+4. 线程回复输入框不出现 Rewrite 按钮（两次），线程用例无法进行；同时频道主输入框正常。
+5. 所有卡片都删掉方括号前缀（`[be-nice test]`）。
+
+仍未测：真中文 IME 组字（LCU 只能逐字发送）；emoji；同名会话；窗口标题变化导致的误拒绝。
 
 ## 发布
 
-- v0.1.0 预览版已公开：https://github.com/mfang0126/be-nice/releases/tag/v0.1.0 （PR #1 合并为 main `361804c`，zip SHA-256 `69e3e112…4a30`，仅 arm64，仅在 macOS 26 测过，无 Developer ID）。
-- 压缩后自动注入本文件、`git status --short` 与最近 5 次提交的 hook 已移到全局 `~/.claude/settings.json`（10-27 11:28；项目里有 STATUS.md 才注入）。PR #2 加的项目级副本已删除。
-- 体验改进 2–6 项已合入 main：PR #4、#5（10-27 17:43）、#6（10-27 18:13），main `9d8cff5`。v0.1.0 发布说明未改，新内容写进下一个版本的说明。
+- v0.1.0 预览版已公开：https://github.com/mfang0126/be-nice/releases/tag/v0.1.0 （仅 arm64，仅在 macOS 26 测过，无 Developer ID）。
+- 体验改进 2–6 项已合入 main（PR #4–#7）。v0.1.0 发布说明未改，新内容写进下一个版本的说明。
 - 后续开发从 main 开新分支，合并走 PR。
 
 ## 代码现状
 
-- 界面文案全部英文。三个风格位置可配置（默认 Polite / Shorter / Friendly，存 UserDefaults `be-nice.styleSlots`），默认选中第一张。
-- 改写窗口：设计 B「并排对比」，Slack 配色；原稿整宽浅灰框（最多 5 行，按真实排版测高）。
-- 体验改进第 3 项已完成（10-27 15:20 已在真实设置窗口点过：Custom Test 0.8 s、Copilot Test 1.3 s、Save 成功；开发版现在走 Copilot gpt-4o-mini）：设置页两种 provider——GitHub Copilot（用本机 `gh auth token`，App 不登录/不存 token，模型取 `/models`，默认 gpt-4o-mini；实测三张卡 0.9 s）与 Custom（任意 OpenAI 兼容）；三个风格位置可在设置里改；Test 按钮。开发版已保存 custom 配置（DeepInfra），所以仍默认走 Custom，切到 Copilot 需在设置里点选后 Save。
-- 体验改进第 5 项（Opus 独立 review 后，10-27 16:15 实测）：默认三个风格改为 Polite / Shorter / Friendly（旧默认且没改过的自动换新）；提示词不再把问句变命令、不加问候落款；微调栏写明对象；选中卡显示 “Edit, then ⌘↩”；关闭窗口不再弹旧 Undo；名称统一 Be Nice / Rewrite shortcut；设置按钮靠右。观察：Shorter 偶尔把问句缩成 “Please fix …”。
-- Opus 三份独立 review（Copilot 安全、控制器并发、提示注入）已处理（17:00，随 PR #5 合入）：重定向不再转发令牌且不落盘缓存；401 清令牌缓存；`gh auth token --hostname github.com` 并校验令牌形状；`< /original>`、全角、零宽字符不能伪造分隔符，选项路径的草稿也被包裹，单卡改写结果会校验；风格名和说明不许换行/控制字符；草稿上限 8000 字；关窗不再误弹旧 Undo，但写入不确定时保留 Undo；失败后释放 client/token。“改写里新增了链接/@/日期”提示不做（PLAN 后置）；全新安装的隐私问题见第 6 项。
-- 体验改进第 6 项（隐私，10-27 17:08 用户确认，提交 d9f9c3a 及随后修正）：全新安装（没存过 provider、没填过 base URL）点 Rewrite 不再默认走 Copilot——不调 `gh`、不发请求，只提示并打开设置页；设置页预选 Copilot 但不自动查登录/模型，点 Test 才查，点 Save 才算选定；老安装（有 base URL）仍是 Custom。README 已对齐（默认三风格、可编辑、Restore defaults、Nothing is sent until you Save）。新增链接/@提示不做（PLAN 后置）。**未在真实 App 里测全新安装路径**（需要清开发版的 UserDefaults，会动现有配置，待用户同意），逻辑由 SettingsTests 覆盖。
-- 体验改进第 4 项（UI/UX 分析，10-27 16:20）：换风格只影响这一次、不再改默认；预设说明更有区分度并要求三版明显不同；微调栏有边框、大字；窗口贴着输入框出现（盖住更少对话）；底部提示收短。已在 Slack 私聊实测换风格不改默认；窗口位置请用户目测。设置页风格已改为三行直接编辑（名字 + 一句说明，含默认三个），每行 `Presets ▾` 填入预设，`Restore defaults` 一次恢复，Save 时校验（非空、无换行/标签、不重名）；改写窗口卡片菜单列“你的三种风格 + 其余预设”，去掉 “Describe your own…”（10-27 16:36 用户改定，提交 1c64fc5，真实设置窗口已测：预设填入、重名拒绝、保存后卡片用新名字、Restore）。排版请用户目测。
-- 体验改进第 2 项与 2b 已完成（10-27 15:10 已在 Slack 私聊 LCU 实测通过：换风格 1.7 s 只重写一张，微调 1.6 s 只重写选中卡，替换读回一致，撤销精确恢复，Copilot 三张卡 1.6 s；测试怎么做见 docs/research/lcu-gui-testing.md）：卡片风格名下拉换风格（6 预设 + 自写一句，只重写该卡片，成功后记入该位置）；“How should it change?” 一行微调，只重写选中卡片。DeepInfra 实测：三张 1.8 s、单张换风格 1.0 s、微调 0.7 s。Orca run `run_69e7a11e6a69`（两个 Sonnet worker）+ 独立 review 5 条均已修。
-- 入口按钮贴 Slack 输入区盒子右上角外侧；状态胶囊同一行左对齐，32 pt 同高。
-- 安全写回核心 `WriteBack.swift`；Slack 已加入两份允许列表。
-- 开发版 API key 读 `~/Library/Application Support/be-nice/dev-api-key`（0600，仅 DEBUG 编译），避免每次重编译弹 Keychain 密码；正式版只用 Keychain。
-- 个人风格学习代码保留但不在 UI；旧小绿点卡片、多 App 探针已删除（标签 `archive/multi-app-m0-m2`）。
+- 界面文案英文；三个风格（默认 Polite / Shorter / Friendly）可在设置页编辑，存 `be-nice.styleSlots`。
+- 设置页两种 provider：GitHub Copilot（用本机 `gh auth token`，App 不存 token）与 Custom（OpenAI 兼容）。全新安装不默认走任何 provider，Save 后才发请求。
+- 安全写回核心 `WriteBack.swift`：替换/撤销前复核同一进程、同一输入框、原文未变、窗口标题未变。富内容检测目前只认出 emoji 和链接，认不出提及胶囊和列表。
+- 入口按钮贴 Slack 输入区右上角外侧；`TriggerController` 祖先遍历上限 16 层。
 
 ## 开发环境
 
-- 开发版固定路径 `~/Applications/be-nice Development.app`，Bundle ID `com.benice.menubar.development`，本地签名证书指纹 `D933388477455C8C62344293E483E625F4B7B194`（不得重新生成）。
-- 10-26 00:03 用户已授予 Accessibility；10-27 00:30 重建安装新版（并排对比窗口）后，运行中的 App 报告 `accessibilityTrusted: true`，**重建后授权保留已验证**。使用前跑 `python3 -I mac-app/scripts/debug-status.py`（0=已授权，2=未授权，1=无法确认）。
-- 开发版模型配置：DeepInfra `https://api.deepinfra.com/v1/openai` + `deepseek-ai/DeepSeek-V4.1-Flash`，密钥取自 `~/.hermes/.env`。丢失时运行 `sh mac-app/scripts/configure-dev-model.sh` 恢复（用户 10-27 指定为默认）。测试不得用别的值覆盖。
+- 开发版固定路径 `~/Applications/be-nice Development.app`，Bundle ID `com.benice.menubar.development`，本地签名证书指纹 `D933388477455C8C62344293E483E625F4B7B194`（不得重新生成）。旧的 `.be-nice-install.*` 目录已清（10-27 21:01），LCU 可用完整路径取 App。
+- Accessibility 已授权，`python3 -I mac-app/scripts/debug-status.py` 返回 0。
+- **开发版模型配置：provider Copilot，模型 `gpt-4o-mini`**（UserDefaults `be-nice.provider=copilot`）。UserDefaults 里仍留着旧的 DeepInfra base URL 和模型 ID，但不在用。测试不得覆盖该配置。
+- 测试工作区 Slack `mingfang.tech`：DM（自己）里有一条来源未证实的未发送草稿 `hi, the numbers in the report look off…`，测试后已原样恢复；#all-mingfangtech 有一条已发送的 `[be-nice test] thread parent`（用户授权）。
+- 长时间前台测试会被系统自动锁屏打断（10-27 20:51）；测试前先确认锁屏时间或保持唤醒。
 
 ## 下一步
 
-1. 待用户决定：全新安装路径是否在真实 App 测（需清开发版 UserDefaults，之后用 `configure-dev-model.sh` 恢复）；前台测试时段；改写窗口位置和设置页排版目测。
-2. 真实 Slack 里还没测：中文 IME、长文、带 emoji/提及/链接的草稿。
-3. 中文/英文普通草稿多跑几次私聊闭环，验证提及和链接被识别为富内容。
-4. 频道与线程（S3）。
-5. 同一会话标题变化导致的误拒绝，按实测决定是否放宽。
+1. 待用户决定修复顺序：线程入口（先只读诊断祖先链）、提及/列表识别为富内容、保持原文语言、保留方括号前缀。
+2. 修完后重跑 S3：私聊、频道、线程，富结构用截图辅助确认撤销。
+3. 真 IME 组字测试需要用户在场切输入法。
