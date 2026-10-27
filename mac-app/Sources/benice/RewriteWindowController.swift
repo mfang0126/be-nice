@@ -384,7 +384,6 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         busy = false
         submitAction = nil
         cancelAction = nil
-        if let sheet = window?.attachedSheet { window?.endSheet(sheet, returnCode: .cancel) }  // "Describe your own…"
         window?.orderOut(nil)
     }
 

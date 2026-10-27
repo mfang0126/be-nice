@@ -162,8 +162,8 @@ extension SettingsStore {
 
     /// Custom first: a rejected Keychain write throws before anything else is written.
     func apply(_ plan: SettingsSavePlan, slots: [RewriteStyle]) throws {
-        guard slots.count == 3, slots.allSatisfy(StyleSlots.isValid) else {
-            throw SettingsError.save("Pick a valid style for each of the three slots.")
+        guard slots.count == 3, slots.allSatisfy(StyleSlots.isValid), StyleSlots.hasDistinctNames(slots) else {
+            throw SettingsError.save("Each of the three styles needs a name, an instruction and a different name.")
         }
         switch plan {
         case .copilot(let model):
