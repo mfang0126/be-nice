@@ -283,3 +283,34 @@ Undo 走状态胶囊：先点 Slack 的 Messages 标签让输入框失焦，再�
 - 卡片未手改，两次都用 ⌘⏎ 替换 Polite 卡。焦点时段内 Orca 两次抢回前台，`open -a Slack` 后重试即可。
 - TextEdit 上不出 Rewrite 的实测按协调者要求取消（不碰 TextEdit）；只有单测覆盖。
 - 清理：频道和线程输入框为空（AX 读回只有一个空段）；DM 未碰；未发送任何消息。GUI 使用 23:39–23:41。
+
+## Main regression 2026-10-27（2026-10-28 00:00–00:02，main dbec9c3 = PR #9–#13 全部合入，只测不改代码）
+
+**准备（无 GUI）**
+- 起点 e0b5444；开测前协调者通知 main 已合入 PR #13（状态胶囊重新定位），改到 dbec9c3 重做。
+- `run-tests.sh`：e0b5444 和 dbec9c3 都 ALL PASS（15 项 selftest，含 2 个 Python）。
+- `build-app.sh debug --install`：先正常退出旧版；安装到 `~/Applications/be-nice Development.app`，签名 “be-nice Local Development”。安装版 LC_UUID `9AD1911E-B252-3F35-B1DF-A2EF7AD0AE79` 和本 worktree 的构建一致。
+- `check-dev.sh --runtime`：PASS（运行中的 App 有 Accessibility 权限）。
+- 中途发现：23:51 另一个会话（worktree `be-nice-m0-axprobe`，有未提交改动）重装过开发版。按协调者指示等它空闲后重装 main，并核对 LC_UUID。
+- 读回工具：草稿区一次性 Swift 脚本，只读 Slack 输入框的 AXValue、第 0 层子节点（段 = AXGroup，空 = AXEmptyGroup）和 AX 帧，另读 be-nice 窗口帧，不改仓库。
+
+**焦点窗口用例**（频道 #all-mingfangtech 主输入框，线程用 `[be-nice test] thread parent`；provider 按现有配置，未改）
+
+| # | 草稿 | 入口 / 卡片 | 替换后读回 | 撤销后读回 | 结果 |
+|---|---|---|---|---|---|
+| 1 | 频道，单行 `[be-nice test] main regression: can you check the build before lunch`（粘贴） | Replace with Polite | `[be-nice test] Could you please check the build before lunch for the main regression of the [be-nice test]?`，结构 段，和卡片一致 | 原文逐字一致，结构 段；胶囊 Restored | 通过（卡片把标记重复了一次，是模型改写质量，不是写回问题） |
+| 2 | 频道，Shift+Return 三行 `[be-nice test] main r line one` / `line two` / `line three`（逐字输入），结构 段/段/段 | Replace with Polite | `[be-nice test] Main R line one, could you please provide line two and line three?`，结构 段 | `…line one\nline two\nline three`，结构 **段/段/段**，截图三行紧挨 | 通过 |
+| 3 | 线程输入框，`[be-nice test] main regression thread: thanks, I will look at it after lunch`（粘贴） | Replace with Polite | `[be-nice test] Could you please allow me some time to review this after lunch?`，频道输入框为空 | 原文逐字一致，结构 段 | 通过 |
+| 4 | 频道，`[be-nice test] 明天下午三点开会，记得带报告` | 三张卡：Polite `[be-nice test] 请注意，明天下午三点我们有会议，请记得带上报告。`；Shorter `[be-nice test] 明天下午三点开会，带报告。`；Friendly `[be-nice test] 明天下午三点我们要开会哦，别忘了带上你的报告！` | 未替换（Esc 关闭） | 草稿原样 | 通过：三张都是中文，都保留 `[be-nice test]` |
+| 5 | 频道，HTML 粘贴 `[be-nice test] main regression: the build log is at <a href="https://example.com">https://example.com</a> can you check it`（Slack 显示为链接 `example.com`） | **Copy rewrite**；状态 “This draft has emoji, mentions, links, lists, formatting or line breaks that a replace would change. You can view, edit or copy this rewrite, but not replace.” | 未点复制（不动剪贴板），Esc 关闭 | AXValue `[be-nice test] main regression: the build log is at example.com can you check it` 不变 | 通过 |
+| 6 | 用例 2 的状态胶囊位置 | — | 胶囊帧 (x 1800, y 652, 174×32)，底边 y 684；输入框外框顶部约 y 690（截图），文本区 (1800, 728, 471×60) | 胶囊帧 (1800, 630, 170×32)：输入框变高（文本区 y 706，h 82），胶囊跟着上移 22 pt；截图仍贴在外框上方 | 通过：两次都紧贴输入框左上方，和输入框左边对齐，跟随输入框高度。备注：胶囊会盖住消息列表最后一行的下沿（截图里 “This is the second line.” 被盖住一部分），因为它就在输入框正上方 |
+
+- 坐标是 AX 屏幕坐标（pt）；截图用 `screencapture -R1700,560,700,260`，只在草稿区，未提交。
+- 用例 1 的 Rewrite 按钮和胶囊窗口 y 都在输入框上方约 76 pt 内；用例 3 的线程胶囊 (2309, 272) 在线程输入框文本区 (2309, 348) 上方，也和左边对齐。
+
+**清理**
+- 频道和线程输入框 AX 读回都是 `"\n"`，结构 空（一个空段），和开测前一致。
+- 频道消息列表只有之前的两条（20:59 thread parent、22:35 u2028 check），线程没有回复；本次**没有发送任何消息**，没有按 Return（只用 Shift+Return）。
+- DM 和其原草稿未碰（侧栏 “Drafts & sent 1” 不变）；没碰 TextEdit 或其他 App；没出现 LCU 授权弹窗；没改模型配置和 Keychain。
+- 删了本次安装留下的 `~/Applications/.be-nice-install.{S8AIMJ,fKsvv2}`；`.be-nice-install.A8bXll` 是另一个会话 23:51 安装时留下的，未动。
+- GUI 焦点时段 00:00:04–00:02:18（约 2 分 15 秒）。
