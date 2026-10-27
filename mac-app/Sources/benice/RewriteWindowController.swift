@@ -18,6 +18,7 @@ private enum Palette {
     static let hint = rgb(0x6B6B70)
     static let warning = rgb(0xB3261E)
     static let editing = rgb(0xEEF6FB)
+    static let draft = rgb(0xF8F8F8)     // background of the read-only original
 }
 
 @MainActor
@@ -454,14 +455,22 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
                 attributes: [.font: NSFont.systemFont(ofSize: size)]).height * 1.1)
         }
-        // Whole lines only (at most three) so a scrolling original is never cut mid-line.
-        let lineHeight = NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: 16))
-        let lines = min(3, max(1, Int(ceil(height(original, width: panelWidth - 56 - 16 - 48, size: 16) / 1.1 / lineHeight))))
-        let originalH = ceil(CGFloat(lines) * lineHeight) + 3
+        // Lay the draft out like the text view does (CJK fallback fonts make lines taller than the
+        // system font's line height), capped at five lines; longer drafts scroll.
+        func laidOut(_ text: String) -> CGFloat {
+            let storage = NSTextStorage(string: text, attributes: [.font: NSFont.systemFont(ofSize: 16)])
+            let layout = NSLayoutManager()
+            let container = NSTextContainer(size: NSSize(width: panelWidth - 56 - 4 - 15 - 28, height: 100_000))
+            layout.addTextContainer(container)
+            storage.addLayoutManager(layout)
+            layout.ensureLayout(for: container)
+            return layout.usedRect(for: container).height
+        }
+        let originalH = ceil(min(laidOut(original), laidOut("国\n国\n国\n国\n国"))) + 20 + 2
         originalHeight.constant = originalH
         let cardTextWidth = (panelWidth - 88) / 3 - 32 - 20
         let wanted = 77 + 20 + (options.map { height($0.text, width: cardTextWidth, size: 16) }.max() ?? 0)
-        let room = screenFrame.height - 50 - (originalH + 44) - 72 - 48
+        let room = screenFrame.height - 50 - (originalH + 67) - 72 - 48
         bodyHeight.constant = 48 + min(max(240, wanted), max(160, room))
     }
 
@@ -492,21 +501,36 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         clip.translatesAutoresizingMaskIntoConstraints = false
         panel.addSubview(clip)
 
-        // Header: white band with the original text.
-        originalView.textColor = Palette.secondaryText
+        // Header: label above the original, shown full width in a light box at card text size.
+        originalView.textColor = Palette.primaryText
+        originalView.textContainerInset = NSSize(width: 14, height: 10)
         originalView.setAccessibilityLabel("Your draft")
         originalView.isSelectable = true
         let originalScroll = Self.scroll(originalView)
         originalScroll.scrollerStyle = .legacy  // always-visible scroller signals a long original
         originalScroll.autohidesScrollers = false
+        let draftBox = NSView()
+        draftBox.wantsLayer = true
+        draftBox.layer?.backgroundColor = Palette.draft.cgColor
+        draftBox.layer?.borderColor = Palette.cardLine.cgColor
+        draftBox.layer?.borderWidth = 1
+        draftBox.layer?.cornerRadius = 8
+        originalScroll.translatesAutoresizingMaskIntoConstraints = false
+        draftBox.addSubview(originalScroll)
+        NSLayoutConstraint.activate([
+            originalScroll.leadingAnchor.constraint(equalTo: draftBox.leadingAnchor),
+            originalScroll.trailingAnchor.constraint(equalTo: draftBox.trailingAnchor, constant: -4),
+            originalScroll.topAnchor.constraint(equalTo: draftBox.topAnchor),
+            originalScroll.bottomAnchor.constraint(equalTo: draftBox.bottomAnchor)])
         originalHeight = originalScroll.heightAnchor.constraint(equalToConstant: 24)
         originalHeight.isActive = true
-        let originalLabel = NSTextField(labelWithString: "Your draft")
-        originalLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        let originalLabel = NSTextField(labelWithString: "YOUR DRAFT")
+        originalLabel.font = .systemFont(ofSize: 11, weight: .semibold)
         originalLabel.textColor = Palette.hint
-        originalLabel.setContentHuggingPriority(.required, for: .horizontal)
-        let header = Self.band([originalLabel, originalScroll], insets: NSEdgeInsets(top: 22, left: 28, bottom: 22, right: 28),
-                               spacing: 16, alignment: .top)
+        originalLabel.alignment = .left
+        let header = Self.band([originalLabel, draftBox], insets: NSEdgeInsets(top: 18, left: 28, bottom: 20, right: 28),
+                               spacing: 8, alignment: .leading, vertical: true)
+        draftBox.widthAnchor.constraint(equalTo: header.widthAnchor, constant: -56).isActive = true
 
         instructionSlot.isHidden = true
         instructionField.placeholderString = "How should it change?"
@@ -561,7 +585,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
         stack.alignment = .width
         stack.translatesAutoresizingMaskIntoConstraints = false
         clip.addSubview(stack)
-        for view in [body, instructionSlot] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        for view in [header, body, instructionSlot] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
 
         let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 1120)
         preferredWidth.priority = .defaultHigh
@@ -582,11 +606,12 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private static func band(_ views: [NSView], insets: NSEdgeInsets, spacing: CGFloat,
-                             alignment: NSLayoutConstraint.Attribute) -> NSView {
+                             alignment: NSLayoutConstraint.Attribute, vertical: Bool = false) -> NSView {
         let band = NSView()
         band.wantsLayer = true
         band.layer?.backgroundColor = NSColor.white.cgColor
         let row = NSStackView(views: views)
+        row.orientation = vertical ? .vertical : .horizontal
         row.spacing = spacing
         row.alignment = alignment
         row.edgeInsets = insets

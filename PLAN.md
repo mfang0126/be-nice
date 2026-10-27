@@ -80,9 +80,15 @@
 - **私聊试用版（S1–S2）**：普通中英文整篇草稿真实完成 Rewrite/编辑/确认替换/撤销，无需终端或手动复制粘贴；保留所有安全检查并完成独立 review。
 - **MVP 完成（S3–S4）**：私聊试用通过后，频道、线程及常见内容通过专项回归和独立 review；保真、无误写、不发送消息有证据。
 - **试用版之后第一项**：原文下方加一行“想怎么改”输入框（如“更客气一点”），回车按该要求重新生成三张卡片；输入框里明确提出的内容可以加入，其余仍不添加事实。窗口重做时先留出位置（隐藏），不接功能。
+- **体验改进（2026-10-27 用户确认，按此顺序）**，设计稿 `docs/design/setup-styles/`，在线画布 https://claude.ai/artifact/VJXtrtQqHvZJbC8m78e32w ：
+  1. 改写窗口的原文：整宽浅灰框，字号同卡片；长文先显示几行，“Show all”展开。
+  2. 三种风格可改：点卡片上的风格名弹出预设（Direct / Friendly / Clear / Shorter / Formal / Polished English）或自写一句；只重写这一张卡片，并记住作为下次默认。设置页可改同样三个位置。
+  3. 设置页兼首次引导：provider 只有两种（10-27 13:11 用户改定）——**Custom**：任意 OpenAI 兼容地址，自己填 base URL、key、model，不做服务商预设；**GitHub Copilot**：电脑上已登录就直接用，没登录只提示怎么登录，不做 App 内登录。Test 显示一次成功和耗时。
+  - 第 1 项原文显示已完成（10-27 用户认可）。
 - **后置**：选区改写、个人风格学习、其他 App 矩阵扩展、Windows、模板管理、自动抓取 Slack、历史库、嵌入式模型、公开分发签名公证。已有个人风格实现和旧盲评失败仅保留作历史证据。
 
 ## 模型接入（v3 定案，10-23 已提交的 PLAN v3；macOS only 见 PLAN v3.2）
 
 - 只走 OpenAI 兼容 `/v1/chat/completions`：base URL、API key（Keychain）、model 名三项配置；不做 provider 特判、自动重试或 fallback。
+- **GitHub Copilot（2026-10-27 用户确认支持，参照 Hermes）**：唯一的 provider 特例。电脑上 `gh` 已登录则直接用它的 token 调 `https://api.githubcopilot.com/chat/completions`（带 `Copilot-Integration-Id: vscode-chat`、`Editor-Version` 头，10-27 实测 200）；没登录只提示用户先登录（如 `gh auth login`），不做 App 内设备码登录。接口无公开文档，用户已接受风险。模型从 `/models` 读取，只列账号策略为 enabled 的；默认模型待用户确认（10-27 实测本账号：gpt-4o-mini ≈1.8 s、gpt-5.4-nano ≈2.5 s、gpt-4.1 ≈5 s，均 0 计费；Claude/Gemini 在账号策略里被禁用）。
 - 本地模型 optional：Ollama、LM Studio、llama.cpp server 等暴露兼容端点即可直接用。嵌入式本地模型的旧调研见 `docs/archive/review-3-local-model.md`。

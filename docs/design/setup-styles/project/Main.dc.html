@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rewrite window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#1264A3}a:hover{color:#0B4C8C}
+</style>
+</helmet>
+<div style="width: 1120px; height: 620px; box-sizing: border-box; padding: 24px; background: #9A9A9A; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; color: #1D1C1D; display: flex; align-items: center; justify-content: center">
+<div style="width: 1072px; background: #FFFFFF; border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,0.28); display: flex; flex-direction: column; overflow: hidden">
+
+<div style="padding: 20px 28px 18px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #E8E8E8">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #616061">Your draft</span>
+<span style="font-size: 12px; color: #616061">62 characters · Slack · Ming Fang (DM)</span>
+</div>
+<div style="background: #F8F8F8; border: 1px solid #EBEBEB; border-radius: 8px; padding: 12px 14px; font-size: 15px; line-height: 1.55; color: #1D1C1D; white-space: pre-wrap">{{draft}}</div>
+<sc-if value="{{long}}" hint-placeholder-val="{{ false }}">
+<button onClick="{{toggle}}" style="align-self: flex-start; border: 0; background: none; padding: 0; font: inherit; font-size: 12px; color: #1264A3; cursor: pointer">{{toggleLabel}}</button>
+</sc-if>
+</div>
+
+<div style="background: #F4F4F5; padding: 20px 28px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+<sc-for list="{{cards}}" as="c" hint-placeholder-count="3">
+<div onClick="{{c.pick}}" style="{{c.cardStyle}}">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<button style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid #DDDDDD; background: #FFFFFF; border-radius: 999px; padding: 4px 10px 4px 12px; font: inherit; font-size: 14px; font-weight: 700; color: #1D1C1D; cursor: pointer" aria-label="Change style">
+{{c.name}}
+<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#616061" stroke-width="1.6" aria-hidden="true"><path d="M3 4.5l3 3 3-3"></path></svg>
+</button>
+<span style="{{c.radioStyle}}"></span>
+</div>
+<span style="font-size: 12px; color: #616061; line-height: 1.4">{{c.hint}}</span>
+<div style="font-size: 15px; line-height: 1.55; color: #1D1C1D; white-space: pre-wrap; padding-top: 2px">{{c.text}}</div>
+</div>
+</sc-for>
+</div>
+
+<div style="padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid #E8E8E8">
+<span style="font-size: 12px; color: #616061">←→ switch · click a style name to change it · ⌘↩ replace · Undo available, nothing is sent</span>
+<div style="display: flex; gap: 10px">
+<button style="height: 36px; padding: 0 18px; border: 1px solid #BBBBBB; background: #FFFFFF; border-radius: 8px; font: inherit; font-size: 14px; font-weight: 600; color: #1D1C1D">Cancel</button>
+<button style="height: 36px; padding: 0 20px; border: 0; background: #007A5A; border-radius: 8px; font: inherit; font-size: 14px; font-weight: 700; color: #FFFFFF">Replace with {{selectedName}}</button>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1120,"height":620}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { sel: 0, open: false }; }
+  renderVals() {
+    const short = 'hi 那个报告我看了 有几个地方数据不对 你明天之前改一下吧 不然周五没法给客户';
+    const full = short + '\n另外第三页那个图表的单位好像也错了，是万不是千。还有附录里的客户名单是旧的，记得换成上周那版。';
+    const open = this.state.open;
+    const opts = [
+      { name: 'Direct', hint: 'Lead with the point', text: '报告有几处数据需要修正，请明天之前改好，周五要交给客户。' },
+      { name: 'Friendly', hint: 'Relaxed, not stiff', text: 'Hi，报告我看过了，整体不错！有几个数据好像不太对，麻烦明天前帮忙改一下，这样周五就能顺利给客户了。' },
+      { name: 'Clear', hint: 'One idea per sentence', text: '你好，报告我已经看完了。里面有几处数据需要再核对一下。能否在明天之前修改好？因为周五需要发给客户。' }
+    ];
+    const cards = opts.map((o, i) => {
+      const on = i === this.state.sel;
+      return { ...o,
+        pick: () => this.setState({ sel: i }),
+        cardStyle: 'display: flex; flex-direction: column; gap: 8px; min-height: 210px; padding: 16px; background: #FFFFFF; border-radius: 10px; cursor: pointer; box-sizing: border-box; border: ' + (on ? '2px solid #1264A3' : '1px solid #DDDDDD; margin: 1px'),
+        radioStyle: 'width: 16px; height: 16px; border-radius: 50%; box-sizing: border-box; flex: none; ' + (on ? 'border: 5px solid #1264A3' : 'border: 1.5px solid #BBBBBB') };
+    });
+    return { cards, draft: open ? full : short, long: true,
+      toggle: () => this.setState({ open: !open }), toggleLabel: open ? 'Show less' : 'Show all (2 more lines)',
+      selectedName: opts[this.state.sel].name };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings and first run</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#1264A3}a:hover{color:#0B4C8C}
+</style>
+</helmet>
+<div style="width: 760px; height: 760px; box-sizing: border-box; padding: 24px; background: #9A9A9A; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; color: #1D1C1D">
+<div style="background: #FFFFFF; border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.28); overflow: hidden; display: flex; flex-direction: column; height: 712px">
+<div style="height: 38px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #E8E8E8; background: #F6F6F6; font-size: 13px; font-weight: 600; color: #444444">Be Nice Settings</div>
+
+<div style="padding: 22px 28px; display: flex; flex-direction: column; gap: 14px; flex: 1">
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #616061">1 · Model</span>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{providers}}" as="p" hint-placeholder-count="2">
+<button onClick="{{p.pick}}" style="{{p.style}}">
+<span style="font-size: 14px; font-weight: 700; color: #1D1C1D">{{p.name}}</span>
+<span style="font-size: 12px; color: #616061; line-height: 1.4">{{p.hint}}</span>
+</button>
+</sc-for>
+</div>
+
+<sc-if value="{{copilot}}" hint-placeholder-val="{{ true }}">
+<div style="border: 1px solid #DDDDDD; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 14px; font-weight: 600">Using your GitHub login · @mfang0126</span>
+<span style="font-size: 12px; color: #616061">Found on this Mac (GitHub CLI). Not logged in? Run gh auth login in Terminal, then click Test.</span>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 10px">
+<label for="cpmodel" style="font-size: 13px; color: #616061; width: 56px">Model</label>
+<select id="cpmodel" style="flex: 1; height: 32px; border: 1px solid #BBBBBB; border-radius: 6px; padding: 0 8px; font: inherit; font-size: 13px; background: #FFFFFF; color: #1D1C1D">
+<option>GPT-4o mini — fastest, ~1.8 s (recommended)</option>
+<option>GPT-5.4 nano — ~2.5 s</option>
+<option>GPT-4.1 — ~5 s</option>
+</select>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{own}}" hint-placeholder-val="{{ false }}">
+<div style="border: 1px solid #DDDDDD; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 10px">
+<label for="base" style="font-size: 13px; color: #616061; width: 56px">Base URL</label>
+<input id="base" value="https://api.openai.com/v1" style="flex: 1; height: 32px; border: 1px solid #BBBBBB; border-radius: 6px; padding: 0 10px; font: inherit; font-size: 13px">
+</div>
+<div style="display: flex; align-items: center; gap: 10px">
+<label for="key" style="font-size: 13px; color: #616061; width: 56px">API key</label>
+<input id="key" type="password" value="sk-xxxxxxxxxxxx" style="flex: 1; height: 32px; border: 1px solid #BBBBBB; border-radius: 6px; padding: 0 10px; font: inherit; font-size: 13px">
+</div>
+<div style="display: flex; align-items: center; gap: 10px">
+<label for="mdl" style="font-size: 13px; color: #616061; width: 56px">Model</label>
+<input id="mdl" value="gpt-5.4-nano" style="flex: 1; height: 32px; border: 1px solid #BBBBBB; border-radius: 6px; padding: 0 10px; font: inherit; font-size: 13px">
+</div>
+<span style="font-size: 12px; color: #616061">Any OpenAI-compatible endpoint (/chat/completions): OpenAI, OpenRouter, a proxy, or a local server like Ollama. Key is stored in your Keychain.</span>
+</div>
+</sc-if>
+
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #616061; padding-top: 6px">2 · Your three styles</span>
+<div style="display: flex; flex-direction: column; border: 1px solid #DDDDDD; border-radius: 10px; overflow: hidden">
+<sc-for list="{{slots}}" as="s" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #EEEEEE">
+<span style="width: 20px; font-size: 12px; color: #616061">{{s.n}}</span>
+<span style="width: 110px; font-size: 14px; font-weight: 600">{{s.name}}</span>
+<span style="flex: 1; font-size: 13px; color: #616061">{{s.hint}}</span>
+<button style="height: 28px; padding: 0 10px; border: 1px solid #BBBBBB; background: #FFFFFF; border-radius: 6px; font: inherit; font-size: 12px; color: #1D1C1D">Change</button>
+</div>
+</sc-for>
+</div>
+<span style="font-size: 12px; color: #616061">You can also change a style right in the rewrite window by clicking its name.</span>
+</div>
+
+<div style="padding: 14px 28px; border-top: 1px solid #E8E8E8; display: flex; align-items: center; justify-content: space-between">
+<span style="font-size: 12px; color: #007A5A; font-weight: 600">✓ Test rewrite worked in 0.8 s</span>
+<div style="display: flex; gap: 10px">
+<button style="height: 34px; padding: 0 16px; border: 1px solid #BBBBBB; background: #FFFFFF; border-radius: 8px; font: inherit; font-size: 13px; font-weight: 600; color: #1D1C1D">Test</button>
+<button style="height: 34px; padding: 0 18px; border: 0; background: #007A5A; border-radius: 8px; font: inherit; font-size: 13px; font-weight: 700; color: #FFFFFF">Done</button>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":760,"height":760}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { prov: 0, vendor: 0 }; }
+  renderVals() {
+    const card = (on) => 'display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px 14px; border-radius: 10px; background: #FFFFFF; font: inherit; text-align: left; cursor: pointer; ' + (on ? 'border: 2px solid #1264A3' : 'border: 1px solid #DDDDDD; margin: 1px');
+    const providers = [
+      ['GitHub Copilot', 'Uses your existing GitHub login'],
+      ['Custom', 'Any OpenAI-compatible endpoint']
+    ].map(([name, hint], i) => ({ name, hint, style: card(i === this.state.prov), pick: () => this.setState({ prov: i }) }));
+    const slots = [['1', 'Direct', 'Lead with the point'], ['2', 'Friendly', 'Relaxed, not stiff'], ['3', 'Clear', 'One idea per sentence']]
+      .map(([n, name, hint]) => ({ n, name, hint }));
+    return { providers, slots, copilot: this.state.prov === 0, own: this.state.prov === 1 };
+  }
+}
+</script>
+</body>
+</html>
