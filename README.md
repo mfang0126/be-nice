@@ -34,7 +34,7 @@ Open **Settings** from the menu-bar icon and pick a model source:
 
 Click **Test** to check it works. **Privacy:** with Copilot or a remote endpoint, your draft text is sent to that provider. Be Nice has no server of its own and bundles no model.
 
-You can also change the three rewrite styles in Settings, or right in the rewrite window by clicking a style name.
+You can also change the three rewrite styles in Settings (pick a preset or write your own: a name and one line of instruction), or right in the rewrite window by clicking a style name.
 
 ## Use
 

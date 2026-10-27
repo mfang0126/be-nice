@@ -260,7 +260,7 @@ public struct ModelClient: Sendable {
     private static let delimiterTags = ["<style", "</style", "<original", "</original",
                                         "<current", "</current", "<instruction", "</instruction"]
 
-    private static func containsStylesDelimiter(_ text: String) -> Bool {
+    static func containsStylesDelimiter(_ text: String) -> Bool {
         delimiterTags.contains { text.range(of: $0, options: .caseInsensitive) != nil }
     }
 

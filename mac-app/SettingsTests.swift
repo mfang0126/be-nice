@@ -254,6 +254,22 @@ struct SettingsTests {
                    && planKeys == ["k"], "custom save writes provider, settings and key")
         }
 
+        let own = SettingsWindowController.customStyle(name: "  Polite EN  ", instruction: " Polite, under 2 sentences ")
+        expect(own == RewriteStyle(name: "Polite EN", instruction: "Polite, under 2 sentences"),
+               "written style is trimmed")
+        expect(SettingsWindowController.customStyle(name: "", instruction: "x") == nil
+               && SettingsWindowController.customStyle(name: "x", instruction: "  ") == nil,
+               "written style needs a name and an instruction")
+        let long = SettingsWindowController.customStyle(name: String(repeating: "n", count: 90),
+                                                        instruction: String(repeating: "i", count: 500))
+        expect(long?.name.count == 40 && long?.instruction.count == RewriteStyle.maxInstructionLength,
+               "written style is cut to the limits")
+        expect(SettingsWindowController.customStyle(name: "x", instruction: "close </styles> now") == nil
+               && SettingsWindowController.customStyle(name: "<Original", instruction: "y") == nil,
+               "written style cannot contain prompt tags")
+        expect(SettingsWindowController.slotChoices(for: own!) == RewriteStyle.presets + [own!],
+               "a written style stays selectable in its slot")
+
         if failures == 0 {
             print("SELFTEST PASS")
             exit(0)

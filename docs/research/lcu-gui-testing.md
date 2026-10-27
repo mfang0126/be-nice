@@ -23,6 +23,7 @@
 | 替换 | `pressKey("super+Return")`，之后用 Slack 的 AX 读回确认 |
 | 撤销 | 失焦后绑定胶囊，点 `Undo`；读回应等于替换前 |
 | 打开设置 | 取 be-nice 的菜单栏项 `be-nice Development` → `Settings…`（`openModelSettings`）；系统菜单栏图标 LCU 够不到 |
+| 设置里写自己的风格 | 点位置下拉框 → `Write your own…`（ID `writeOwn`）→ 弹窗里 `setValue` 填两个框 → 点 OK → Save |
 | 关窗不替换 | `pressKey("Escape")` |
 
 ## 会污染环境的地方（测完要恢复）
@@ -30,6 +31,11 @@
 - 换风格会把新风格**存进该位置**（UserDefaults `be-nice.styleSlots`）。测完把第 2 位改回 Friendly。
 - 在设置里 Save 会切换 provider；测试前问清用户是否同意。
 - 撤销要求焦点还在原输入框元素上：测试中点了 Slack 其他控件（例如打开资料表单）会让 Electron 重绘输入框，撤销会被安全检查拒绝（"Slack focus moved…"）。这是保护，不是 Bug；重新走一轮 Rewrite→替换→撤销即可。
+
+## 小坑
+
+- 点 `be-nice Development` 菜单后，菜单已经展开；再次读树取到的就是菜单，直接点 `Settings…`，不要再找菜单栏项（会报 `cannotClickOffscreenElement`）。
+- 重装开发版前先 `pkill -TERM -f "be-nice Development.app/Contents/MacOS/benice"`；安装脚本会留下 `.be-nice-install.*/previous.app`，验证后删掉。
 
 ## 已知观察
 
