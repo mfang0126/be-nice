@@ -138,3 +138,36 @@ D1 三张卡原文（输入 `[be-nice test] 麻烦你明天之前看一下构建
 注：Slack 的 AXValue 不含空段落（三段带空行的草稿读出来只有单个 `\n`），所以读回对比用的是替换前后的 AXValue，加截图确认空行。
 
 状态文案改为 “This draft has emoji, mentions, links, lists or formatting that a replace would drop.”（`WriteBack.swift:81`），重装后在 c2 上看到新文案。`run-tests.sh` ALL PASS。清理：频道、线程输入框为空；DM 未碰；安装备份已删；未发送消息。
+
+### 6.5 第三轮：段首/段尾/整段格式（21:23–21:28，PR #10 review 追加）
+
+review 指出：6.4 的加粗/代码之所以被拦，是因为格式在段中间、把段切成两段 AXStaticText；格式在段首、段尾或整段时只有 0–1 个直接 AXStaticText，会被当成纯文本。
+
+**实测子树（修复前读出，只读 AX 转储）**，频道主输入框，草稿用 Slack 标记 + ⇧⌘F 应用格式，截图确认：
+
+| # | 草稿 | AXTextArea 下 | 入口（修复后安装版） |
+|---|---|---|---|
+| e1 | 段首加粗 `*[be-nice test] urgent* please check the build today` | AXGroup → AXGroup(`AXStrongStyleGroup`)[AXStaticText] / AXStaticText | **Copy rewrite** |
+| e2 | 段尾加粗 `[be-nice test] please check the build *before lunch today*` | AXGroup → AXStaticText / AXGroup(`AXStrongStyleGroup`)[AXStaticText] | **Copy rewrite** |
+| e3 | 整段加粗 `*[be-nice test] please check the build today*` | AXGroup → AXGroup(`AXStrongStyleGroup`)[AXStaticText] | **Copy rewrite** |
+| e4 | 整段行内代码 `` `[be-nice test] make test` `` | AXGroup → AXGroup(`AXCodeStyleGroup`)[AXStaticText] | **Copy rewrite** |
+
+review 的推断成立：e1–e4 每个节点下最多一个直接 AXStaticText，旧规则会判为纯文本并允许替换。
+
+**修法**：`childrenAreRich(roles, subroles:)` 多看子节点 subrole，任何以 `StyleGroup` 结尾的（`AXStrongStyleGroup`、`AXCodeStyleGroup` 等）即富内容；`hasRichContent` 顺带读 AXSubrole，其余不变。纯段落的 subrole 只有 `AXEmptyGroup`，不受影响。单测：WriteBackTests 第 30 组加“段首加粗”“整段代码”两条，去掉 subrole 规则后两条失败（已验证）；TriggerTests 加“AXWebArea 在第 25 层（超出 24 层上限）→ hide(.outsideWebContent)”。`run-tests.sh` ALL PASS。
+
+**纯文本复测（同一安装版，debug-status = 0）**
+
+| # | 位置 | 草稿 | 入口 | 替换后读回 | 撤销后 AXValue | 结论 |
+|---|---|---|---|---|---|---|
+| f1 | 频道 | 三段带空行（`setValue`，子树：段 / 2×`AXEmptyGroup` / 段 / 2×`AXEmptyGroup` / 段） | Replace with Polite | 与 Polite 卡一致 | 逐字一致，子树同替换前 | 通过 |
+| f2 | 频道 | Shift+Return 三行（逐字输入，截图无空行） | Replace with Polite | `Could you please provide details on the build, the documentation, and the release?` | 逐字一致 | 通过（见下方已知问题） |
+| f3 | 线程 | `[be-nice test] Thanks, I will look at it after lunch.` | Rewrite 出现；Replace with Polite | `Thank you for your patience; I will review it after lunch.`（写进线程框，频道框为空） | 逐字一致 | 通过 |
+
+**新发现（未修，不在本修复范围）**：f2 撤销后 AXValue 一致，但截图里三行之间多了空行，子树变成 段 / `AXEmptyGroup` / 段 / `AXEmptyGroup` / 段。原因推断：撤销用 AXValue 写回 `\n`，Slack 把每个 `\n` 变成新段落，原来的 Shift+Return 行距没法还原。6.4 b 当时只比了 AXValue，没截图。属于 D3 同类问题（撤销验证只比 AX 字符串）。
+
+**已知限制（记录，不改）**
+- 慢的 Slack 可能让线程输入框的 Rewrite 按钮闪烁：祖先遍历在 0.6 s 快照时限内没走到第 18 层 AXWebArea 时会隐藏按钮。失败方向是“不显示”，不会误写。
+- 单独成段的提及胶囊（一段里只有 `@Full Name`）只有一个 AXStaticText，没有独立角色或 subrole，会被当成纯文本；替换会丢胶囊，撤销后是纯文本 `@Full Name`，Slack 会重新识别成提及（见 D4）。
+
+清理：频道、线程输入框已清空（AX 读回为空）；DM 未碰（侧栏 “Drafts & sent 1” 不变）；`~/Applications/.be-nice-install.*` 在 debug-status = 0 后删除；未发送任何消息。

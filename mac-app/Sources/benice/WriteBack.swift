@@ -236,11 +236,15 @@ public enum WriteBackPolicy {
     /// One node's child roles, as Slack's composer exposes them (S3 diagnosis 10-27):
     /// emoji are AXImage, links AXLink, lists AXList (subrole AXContentList), and a
     /// mention pill or other inline formatting splits a paragraph into several
-    /// AXStaticText runs. AXValue keeps none of that structure.
-    public static func childrenAreRich(_ roles: [String]) -> Bool {
+    /// AXStaticText runs. Bold/italic/code runs are AXGroup with a "...StyleGroup"
+    /// subrole (AXStrongStyleGroup, AXCodeStyleGroup), so a run at a paragraph's
+    /// start or end, or a fully formatted paragraph, is caught by subrole.
+    /// AXValue keeps none of that structure.
+    public static func childrenAreRich(_ roles: [String], subroles: [String] = []) -> Bool {
         let richRoles: Set<String> = ["AXImage", "AXLink", "AXButton", "AXList"]
         return roles.contains { richRoles.contains($0) }
             || roles.filter { $0 == "AXStaticText" }.count > 1
+            || subroles.contains { $0.hasSuffix("StyleGroup") }
     }
 
     public static let selectionBundleIDs: Set<String> = [
@@ -1000,13 +1004,17 @@ public struct SystemTextTargetAccess: TextTargetAccess {
                   AXUIElementCopyAttributeValue(node, "AXChildren" as CFString, &raw) == .success,
                   let children = raw as? [AXUIElement] else { continue }
             var roles: [String] = []
+            var subroles: [String] = []
             for child in children {
                 var role: CFTypeRef?
                 if AXUIElementCopyAttributeValue(child, "AXRole" as CFString, &role) == .success,
                    let r = role as? String { roles.append(r) }
+                var subrole: CFTypeRef?
+                if AXUIElementCopyAttributeValue(child, "AXSubrole" as CFString, &subrole) == .success,
+                   let r = subrole as? String { subroles.append(r) }
                 queue.append((child, depth + 1))
             }
-            if WriteBackPolicy.childrenAreRich(roles) { return true }
+            if WriteBackPolicy.childrenAreRich(roles, subroles: subroles) { return true }
         }
         return false
     }

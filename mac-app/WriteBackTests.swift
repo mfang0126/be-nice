@@ -707,6 +707,11 @@ struct WriteBackTests {
         expect(!WriteBackPolicy.childrenAreRich(["AXGroup", "AXGroup", "AXGroup"]),
                "plain paragraphs are plain")
         expect(!WriteBackPolicy.childrenAreRich([]), "empty composer is plain")
+        expect(WriteBackPolicy.childrenAreRich(["AXGroup", "AXStaticText"],
+                                               subroles: ["AXStrongStyleGroup"]),
+               "bold at paragraph start (one text run + style group) is rich")
+        expect(WriteBackPolicy.childrenAreRich(["AXGroup"], subroles: ["AXCodeStyleGroup"]),
+               "fully inline-code paragraph is rich")
         do {
             let access = slackSetup()
             access.rich = true

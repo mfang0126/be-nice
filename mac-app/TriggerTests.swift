@@ -63,6 +63,11 @@ struct TriggerTests {
                     == .show(.wholeValue),
                    "Slack \(name) composer with AXWebArea as parent \(depth) -> whole value")
         }
+        let beyondCap = Array(repeating: "AXGroup", count: TriggerPolicy.maxAncestorDepth) + ["AXWebArea"]
+        expect(decision("com.tinyspeck.slackmacgap", "AXTextArea",
+                        ancestors: Array(beyondCap.prefix(TriggerPolicy.maxAncestorDepth)))
+                == .hide(.outsideWebContent),
+               "Slack AXWebArea beyond the 24-level walk cap is hidden")
         expect(decision("com.tinyspeck.slackmacgap", "AXTextArea",
                         ancestors: Array(repeating: "AXGroup", count: 9))
                 == .hide(.outsideWebContent),
