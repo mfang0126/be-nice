@@ -75,13 +75,16 @@ struct CopilotAuthTests {
         expect(config.extraHeaders == ["Copilot-Integration-Id": "vscode-chat", "Editor-Version": "vscode/1.104.0"],
                "config carries both headers")
 
+        expect(A.validToken("ghp_abcdefghijklmnopqrstuvwxyz0123\nextra") == "ghp_abcdefghijklmnopqrstuvwxyz0123", "validToken: first line only")
+        expect(A.validToken("warning: not logged in") == nil && A.validToken("{\"a\":1}") == nil && A.validToken("short") == nil, "validToken: rejects non-tokens")
+        expect(!A.ghCandidates(path: "relative/bin:/usr/bin", home: "/h").contains("relative/bin/gh"), "ghCandidates: relative PATH entries dropped")
         // token() with fake runner.
         let calls = Counter()
         A.isExecutable = { $0 == "/opt/homebrew/bin/gh" }
-        A.runGh = { _, _ in calls.bump(); return "  test-token\n" }
+        A.runGh = { _, _ in calls.bump(); return "  ghp_testtoken0123456789abcd\n" }
         A.resetTokenCache()
-        expect((try? A.token()) == "test-token", "token: success, trimmed")
-        expect((try? A.token()) == "test-token" && calls.value == 1, "token: cache hit does not re-run")
+        expect((try? A.token()) == "ghp_testtoken0123456789abcd", "token: success, trimmed")
+        expect((try? A.token()) == "ghp_testtoken0123456789abcd" && calls.value == 1, "token: cache hit does not re-run")
         _ = try? A.token(refresh: true)
         expect(calls.value == 2, "token: refresh re-runs")
         A.resetTokenCache()
@@ -92,8 +95,8 @@ struct CopilotAuthTests {
         A.isExecutable = { _ in false }
         expectAuth(.ghNotFound, "token: no candidates") { try A.token() }
         A.isExecutable = { $0 == "/opt/homebrew/bin/gh" || $0 == "/usr/local/bin/gh" }
-        A.runGh = { path, _ in path == "/usr/local/bin/gh" ? "second" : nil }
-        expect((try? A.token()) == "second", "token: failed candidate falls through to the next")
+        A.runGh = { path, _ in path == "/usr/local/bin/gh" ? "ghp_second0123456789abcdefg" : nil }
+        expect((try? A.token()) == "ghp_second0123456789abcdefg", "token: failed candidate falls through to the next")
         A.resetTokenCache()
 
         // listModels via URLProtocol stub.
@@ -101,17 +104,17 @@ struct CopilotAuthTests {
         configuration.protocolClasses = [ModelsStub.self]
         let session = URLSession(configuration: configuration)
         ModelsStub.state.set(status: 200, body: json)
-        let listed = try! await A.listModels(token: "test-token", session: session)
+        let listed = try! await A.listModels(token: "ghp_testtoken0123456789abcd", session: session)
         expect(listed.map(\.id) == ["a", "e", "f", "g"], "listModels parses a 200")
         let seen = ModelsStub.state.lastRequest
         expect(seen?.url == A.modelsEndpoint && seen?.httpMethod == "GET", "listModels GETs the models endpoint")
-        expect(seen?.value(forHTTPHeaderField: "Authorization") == "Bearer test-token", "listModels sends Bearer")
+        expect(seen?.value(forHTTPHeaderField: "Authorization") == "Bearer ghp_testtoken0123456789abcd", "listModels sends Bearer")
         expect(seen?.value(forHTTPHeaderField: "Copilot-Integration-Id") == "vscode-chat"
                 && seen?.value(forHTTPHeaderField: "Editor-Version") == "vscode/1.104.0", "listModels sends headers")
         for (status, expected) in [(401, A.AuthError.notLoggedIn), (500, .models("HTTP 500"))] {
             ModelsStub.state.set(status: status, body: "{}")
             do {
-                _ = try await A.listModels(token: "test-token", session: session)
+                _ = try await A.listModels(token: "ghp_testtoken0123456789abcd", session: session)
                 expect(false, "listModels \(status) must throw")
             } catch {
                 expect((error as? A.AuthError) == expected, "listModels \(status) error (got \(error))")

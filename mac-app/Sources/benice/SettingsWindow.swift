@@ -852,6 +852,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                     }
                     return .worked(seconds: Date().timeIntervalSince(started))
                 } catch {
+                    if case ModelClientError.http(status: 401, _) = error { CopilotAuth.resetTokenCache() }
                     return .failed(error.localizedDescription)
                 }
             }.value

@@ -66,6 +66,7 @@ actor WriteBackController {
     var request: Task<Void, Never>?
     var regenerate: Task<Void, Never>?
     var shown: (original: String, options: [String])?
+    var uncertainWrite = false
     var generation: UInt64 = 7
     var busy = false
     var restored = true

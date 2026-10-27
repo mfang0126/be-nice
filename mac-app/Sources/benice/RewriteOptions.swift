@@ -56,8 +56,12 @@ enum StyleSlots {
     static func isValid(_ style: RewriteStyle) -> Bool {
         let name = style.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let instruction = style.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        let plain = { (text: String) in
+            text.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) && !CharacterSet.newlines.contains($0) }
+        }
         return !name.isEmpty && name.count <= 40
             && !instruction.isEmpty && instruction.count <= RewriteStyle.maxInstructionLength
+            && plain(name) && plain(instruction)
     }
 }
 
