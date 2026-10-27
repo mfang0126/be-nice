@@ -118,6 +118,23 @@ D1 三张卡原文（输入 `[be-nice test] 麻烦你明天之前看一下构建
 | T2 | 线程 | `[be-nice test] 明天的会议改到下午三点，大家记得更新日历。` | Replace with Polite（三张卡都是中文） | `请注意，明天的会议时间已更改为下午三点，请大家更新日历。` | 原文逐字一致 | 通过 |
 
 观察：
-- 状态文案只说 “emoji, mentions or links”，没提列表；列表草稿也显示这句。文案未改（避免与已测版本不一致），留作后续。
+- 状态文案原来只说 “emoji, mentions or links”；已在 6.4 改为包含列表和格式。
 - 卡片仍删掉 `[be-nice test]` 前缀（第 2 节第 5 条，不在本修复范围）。
 - 清理：频道、线程输入框已清空（AX 读回为空）；DM 草稿未碰（侧栏 “Drafts & sent 1” 不变）；`~/Applications/.be-nice-install.*` 在 debug-status = 0 后删除。未发送任何消息。
+
+### 6.4 第二轮：普通多行草稿仍可直接替换（21:18–21:25，协调者 review 追加）
+
+疑问：“同一节点下多于一个 AXStaticText = 富内容”会不会把普通多行草稿也拦掉。实测（频道主输入框，修复后的安装版）：
+
+| # | 草稿 | AX 子树（AXTextArea 下） | 入口 | 替换前 AXValue | 撤销后 AXValue | 结论 |
+|---|---|---|---|---|---|---|
+| a | 三段，段间空行（粘贴 `…build\n\nsecond…\n\nthird…`） | AXGroup[1 个 AXStaticText] / AXGroup(`AXEmptyGroup`) / AXGroup[1] / AXGroup(`AXEmptyGroup`) / AXGroup[1] | **Replace with Polite** | `[be-nice test] first paragraph about the build\nsecond paragraph about the docs\nthird paragraph about the release` | 逐字一致；截图空行恢复 | 通过（新文案版本上重跑一次，同样通过） |
+| b | 三行，Shift+Return 换行（逐字输入） | 3 个 AXGroup，各 1 个 AXStaticText（Slack 编辑器把 Shift+Return 也做成独立段落，不是段内软换行） | **Replace with Polite** | `[be-nice test] line one about the build\nline two about the docs\nline three about the release` | 逐字一致 | 通过 |
+| c1 | 加粗：`please check **the build** today`（⌘B） | AXGroup → AXStaticText / AXGroup(subrole `AXStrongStyleGroup`)[AXStaticText] / AXStaticText | **Copy rewrite** | — | — | 通过（富） |
+| c2 | 行内代码：``run `make test` before merging``（反引号自动转换） | AXGroup → AXStaticText / AXGroup(subrole `AXCodeStyleGroup`)[AXStaticText] / AXStaticText | **Copy rewrite** | — | — | 通过（富） |
+
+结论：Slack 每段都是一个 AXGroup、里面只有一个 AXStaticText，换行和空行都不会把一段切成多段文字，所以普通多行草稿不会被拦。规则**无需收窄**，D3'/D4'/C1'/线程用例无需重跑。加粗、行内代码同样会被识别为富内容（同一段里出现多段文字）。
+
+注：Slack 的 AXValue 不含空段落（三段带空行的草稿读出来只有单个 `\n`），所以读回对比用的是替换前后的 AXValue，加截图确认空行。
+
+状态文案改为 “This draft has emoji, mentions, links, lists or formatting that a replace would drop.”（`WriteBack.swift:81`），重装后在 c2 上看到新文案。`run-tests.sh` ALL PASS。清理：频道、线程输入框为空；DM 未碰；安装备份已删；未发送消息。

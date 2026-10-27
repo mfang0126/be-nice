@@ -62,7 +62,7 @@ public enum WriteBackFailure: Error, Sendable, Equatable {
     /// The read-back saw a third value or could not read it. A write may have
     /// occurred. Deliberately carries no captured document text.
     case writeUnexpected
-    /// Slack draft contains emoji, mentions, links or other non-text content that
+    /// Slack draft contains emoji, mentions, links, lists, formatting or other non-text content that
     /// a plain-text replace would drop; only copying is offered.
     case richContent
 
@@ -78,7 +78,7 @@ public enum WriteBackFailure: Error, Sendable, Equatable {
         case .noFrontmostApp: return "Slack isn't in front. Switch back to Slack and try again."
         case .noFocusedElement: return "Click into the Slack message box and try again."
         case .secureField: return "Can't read a password field."
-        case .richContent: return "This draft has emoji, mentions or links that a replace would drop."
+        case .richContent: return "This draft has emoji, mentions, links, lists or formatting that a replace would drop."
         case .notTextTarget: return "That isn't a text box. Click into the Slack message box and try again."
         case .valueUnavailable: return "Couldn't read the draft. Click into the message box and try again."
         case .selectionUnavailable: return "Couldn't read the selection. Click into the message box and try again."
