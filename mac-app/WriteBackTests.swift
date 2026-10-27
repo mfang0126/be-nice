@@ -659,6 +659,8 @@ struct WriteBackTests {
             let access = wholeSetup()
             access.bundles[100] = slack
             access.windowTitle = title
+            access.layout = [false]
+            access.slackWrites = true
             return access
         }
         do {
@@ -712,24 +714,102 @@ struct WriteBackTests {
                "bold at paragraph start (one text run + style group) is rich")
         expect(WriteBackPolicy.childrenAreRich(["AXGroup"], subroles: ["AXCodeStyleGroup"]),
                "fully inline-code paragraph is rich")
-        // Paragraph layouts recorded in S3 6.4/6.5: only "text (empty text)*" survives setValue.
+        // Paragraph layouts recorded in S3 6.4/6.5/7: Slack rebuilds any of them from
+        // U+2028-joined paragraphs, so undo restores Shift+Return lines and blank lines.
         let p = "AXGroup", e = "AXEmptyGroup"
-        func restorable(_ subroles: [String]) -> Bool {
-            WriteBackPolicy.paragraphsRestorable(Array(repeating: p, count: subroles.count), subroles: subroles)
+        expect(WriteBackPolicy.paragraphLayout([p, p, p], subroles: ["", e, ""]) == [false, true, false],
+               "paragraph layout marks AXEmptyGroup as empty")
+        expect(WriteBackPolicy.paragraphLayout([], subroles: []) == [], "no children is an empty layout")
+        expect(WriteBackPolicy.paragraphLayout([p, "AXList"], subroles: ["", "AXContentList"]) == nil,
+               "non-paragraph child at depth 0 has no layout")
+        expect(WriteBackPolicy.paragraphLayout([p, "", p], subroles: ["", e, ""]) == nil,
+               "unreadable role at depth 0 has no layout")
+        expect(WriteBackPolicy.paragraphLayout([p, p], subroles: ["", e, ""]) == nil,
+               "misaligned role/subrole arrays have no layout")
+        expect(WriteBackPolicy.paragraphLayout([p], subroles: ["AXStrongStyleGroup"]) == nil,
+               "unknown paragraph subrole has no layout")
+        let ls = "\u{2028}"
+        // AXValue read back for each layout in real Slack (S3 7.5).
+        let recorded: [([String], String)] = [
+            (["a", "b", "c"], "a\nb\nc"),          // Shift+Return lines
+            (["a", "", "b", "", "c"], "a\nb\nc"),  // typed blank lines; setValue("a\nb\nc")
+            (["a", "", "", "b"], "a\n\nb"),         // setValue("a\n\nb"); a + 3×U+2028 + b
+            (["", "", "a", "", ""], "\n\na\n\n"),   // leading and trailing empties
+        ]
+        for (paragraphs, value) in recorded {
+            expect(WriteBackPolicy.slackValue(paragraphs: paragraphs) == value,
+                   "Slack AXValue model matches recorded \(paragraphs)")
+            expect(WriteBackPolicy.slackEncoding(value: value, layout: paragraphs.map(\.isEmpty))
+                   == paragraphs.joined(separator: ls), "encoding rebuilds recorded \(paragraphs)")
         }
-        expect(restorable([""]), "single paragraph is restorable")
-        expect(restorable(["", e, "", e, ""]), "paragraphs with one blank line each are restorable")
-        expect(!restorable(["", "", ""]), "Shift+Return lines (adjacent paragraphs) are not restorable")
-        expect(!restorable(["", e, e, ""]), "double blank line is not restorable")
-        expect(!restorable(["", e]), "trailing empty line is not restorable")
-        expect(!restorable([e, ""]), "leading empty line is not restorable")
-        expect(WriteBackPolicy.paragraphsRestorable([], subroles: []), "unread tree counts as restorable")
-        expect(!WriteBackPolicy.paragraphsRestorable([p, "AXList"], subroles: ["", "AXContentList"]),
-               "non-paragraph child at depth 0 is not restorable")
-        expect(!WriteBackPolicy.paragraphsRestorable([p, "", p], subroles: ["", e, ""]),
-               "unreadable role at depth 0 is not restorable")
-        expect(!WriteBackPolicy.paragraphsRestorable([p, p], subroles: ["", e, ""]),
-               "misaligned role/subrole arrays are not restorable")
+        expect(WriteBackPolicy.slackEncoding(value: "a\nb", layout: [false]) == nil,
+               "layout with too few text paragraphs is not encodable")
+        expect(WriteBackPolicy.slackEncoding(value: "a\n\nb", layout: [false, true, false]) == nil,
+               "AXValue with an extra empty line for the layout is not encodable")
+        expect(WriteBackPolicy.slackEncoding(value: "a", layout: []) == nil, "empty layout is not encodable")
+        expect(WriteBackPolicy.slackEncoding(suggestion: "x\ny\n\nz\r\nw") == "x\(ls)y\(ls)\(ls)z\(ls)w",
+               "suggestion newlines become paragraph breaks")
+        expect(WriteBackPolicy.slackNormalized("x\ny\n\nz\n\n\nw") == "x\ny\nz\n\nw",
+               "suggestion reads back with Slack's AXValue rule")
+        for (draft, layout) in [("a\nb\nc", [false, false, false]), ("a\nb", [false, true, false]),
+                                ("a", [false]), ("\na\n\nb\n", [true, false, true, true, false, true])] {
+            let access = slackSetup()
+            access.storedValue = draft
+            access.layout = layout
+            let core = controller(access, "x\ny\n\nz")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "Slack replace applies over \(layout)")
+            expect(access.writes.last?.1 == "x\(ls)y\(ls)\(ls)z" && access.storedValue == "x\ny\nz"
+                   && access.layout == [false, false, true, false], "replace keeps soft and blank lines")
+            expect(await core.undo() == .restored, "Slack undo restores \(layout)")
+            expect(access.storedValue == draft && access.layout == layout, "undo rebuilds layout \(layout)")
+        }
+        do {
+            let access = slackSetup()
+            access.storedValue = "a\nb"
+            access.layout = [false, false]
+            access.slackPendingReads = 3
+            let core = controller(access, "x\ny")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "Slack apply waits through the raw U+2028 value")
+            expect(await core.undo() == .restored, "Slack undo waits through the raw U+2028 value")
+            expect(access.storedValue == "a\nb" && access.layout == [false, false], "undo rebuilt soft lines")
+            access.slackPendingReads = 0
+            let other = controller(access, "x\ny")
+            _ = await other.requestPreview()
+            access.applyOnSet = false
+            access.valueReads = ["a\nb", "x y"]
+            expect(await other.apply() == .failed(.writeUnexpected),
+                   "a value that is not the written text is still a third value")
+        }
+        do {
+            let access = slackSetup()
+            access.storedValue = "a\nb"
+            access.layout = [false, false]
+            let core = controller(access, "a\n\nb")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .failed(.noChange),
+                   "Slack suggestion that reads back as the draft is refused")
+            expect(access.writes.isEmpty, "read-back-identical refusal performs no write")
+        }
+        for layout in [nil, [false], [false, true]] as [[Bool]?] {
+            let access = slackSetup()
+            access.storedValue = "a\nb"
+            access.layout = layout
+            expect(await controller(access).requestPreview() == .failed(.richContent),
+                   "layout that cannot rebuild the draft is copy-only (\(String(describing: layout)))")
+        }
+        do {
+            let access = slackSetup()
+            access.storedValue = "a\nb"
+            access.layout = [false, false]
+            let core = controller(access, "hello, world.")
+            _ = await core.requestPreview()
+            access.layout = [false, true, false]
+            expect(await core.apply() == .failed(.targetChanged(.valueChanged)),
+                   "Slack apply refused when the paragraph layout changed after preview")
+            expect(access.writes.isEmpty, "layout-change refusal performs no write")
+        }
         do {
             let access = slackSetup()
             access.rich = true
@@ -828,6 +908,12 @@ private final class FakeAccess: TextTargetAccess, @unchecked Sendable {
     var focused: TargetElement?
     var windowTitle: String? = "be-nice AX test target"
     var rich = false
+    /// Slack composer paragraphs (true = empty). With `slackWrites`, setValue rebuilds
+    /// them the way Slack does: a new paragraph at each U+2028, AXValue = text paragraphs.
+    var layout: [Bool]?
+    var slackWrites = false
+    /// Reads after a Slack U+2028 write that still show the written text (real Slack: ~0.2 s).
+    var slackPendingReads = 0
     var roleValue: String? = "AXTextArea"
     var subroleValue: String?
     var storedValue = ""
@@ -869,6 +955,8 @@ private final class FakeAccess: TextTargetAccess, @unchecked Sendable {
     }
 
     func hasRichContent(_ element: TargetElement) -> Bool { rich }
+
+    func paragraphLayout(of element: TargetElement) -> [Bool]? { layout }
 
     func focusedWindowTitle(pid: pid_t) -> String? {
         calls.append("windowTitle")
@@ -912,7 +1000,15 @@ private final class FakeAccess: TextTargetAccess, @unchecked Sendable {
         writes.append((.value, text))
         if setError == 0 && applyOnSet {
             storedValue = text
-            storedRange = NSRange(location: (text as NSString).length, length: 0)
+            if slackWrites {
+                let paragraphs = text.components(separatedBy: "\u{2028}")
+                layout = paragraphs.map(\.isEmpty)
+                storedValue = WriteBackPolicy.slackValue(paragraphs: paragraphs)
+                if paragraphs.count > 1 {
+                    valueReads = Array(repeating: text, count: slackPendingReads)
+                }
+            }
+            storedRange = NSRange(location: (storedValue as NSString).length, length: 0)
         }
         return setError
     }

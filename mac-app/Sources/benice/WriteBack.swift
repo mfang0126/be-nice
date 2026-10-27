@@ -207,6 +207,9 @@ public protocol TextTargetAccess: Sendable {
     /// True when the editor holds non-text children (images such as emoji, links,
     /// mention pills) that AXValue does not represent.
     func hasRichContent(_ element: TargetElement) -> Bool
+    /// Slack composer paragraphs, one per child, true = empty paragraph; nil when the
+    /// children are not all plain paragraphs or cannot be read.
+    func paragraphLayout(of element: TargetElement) -> [Bool]?
     func uptime() -> TimeInterval
     func sleep(_ seconds: TimeInterval)
 }
@@ -214,6 +217,7 @@ public protocol TextTargetAccess: Sendable {
 extension TextTargetAccess {
     public func focus(_ element: TargetElement) -> Int32 { -25205 }  // kAXErrorCannotComplete
     public func hasRichContent(_ element: TargetElement) -> Bool { false }
+    public func paragraphLayout(of element: TargetElement) -> [Bool]? { nil }
 }
 
 public protocol SuggestionProviding: Sendable {
@@ -247,19 +251,75 @@ public enum WriteBackPolicy {
             || subroles.contains { $0.hasSuffix("StyleGroup") }
     }
 
-    /// The composer's own children, one per paragraph: whether `setValue(AXValue)`
-    /// writes back the same layout. AXValue joins text paragraphs with a single "\n"
-    /// and omits empty ones, and Slack turns each written "\n" into a new paragraph
-    /// plus one empty paragraph (S3 10-27, 6.5 f2). So only "text (empty text)*" can
-    /// be restored; Shift+Return lines (adjacent text paragraphs), double blank
-    /// lines and leading/trailing empty lines cannot. An unread tree (no children)
-    /// counts as restorable; any non-AXGroup or unreadable ("") child, or misaligned
-    /// arrays, does not.
-    public static func paragraphsRestorable(_ roles: [String], subroles: [String]) -> Bool {
-        if roles.isEmpty { return true }
-        guard roles.count == subroles.count, roles.allSatisfy({ $0 == "AXGroup" }) else { return false }
-        let empty = subroles.map { $0 == "AXEmptyGroup" }
-        return empty.count % 2 == 1 && empty.enumerated().allSatisfy { $0.element == ($0.offset % 2 == 1) }
+    /// The composer's own children, one per paragraph (true = `AXEmptyGroup`), or nil
+    /// when any child is not a plain paragraph, its role is unreadable ("") or the
+    /// arrays are misaligned.
+    public static func paragraphLayout(_ roles: [String], subroles: [String]) -> [Bool]? {
+        guard roles.count == subroles.count, roles.allSatisfy({ $0 == "AXGroup" }),
+              subroles.allSatisfy({ $0 == "" || $0 == "AXEmptyGroup" }) else { return nil }
+        return subroles.map { $0 == "AXEmptyGroup" }
+    }
+
+    /// Slack's AXValue for a paragraph list ("" = empty paragraph), recorded S3 10-27 7.5:
+    /// each empty paragraph reads as "\n" and adjacent text paragraphs get one "\n" between
+    /// them, so "a b" and "a, empty, b" both read "a\nb" and AXValue alone cannot rebuild them.
+    public static func slackValue(paragraphs: [String]) -> String {
+        var value = ""
+        var afterText = false
+        for paragraph in paragraphs {
+            if paragraph.isEmpty {
+                value += "\n"
+                afterText = false
+            } else {
+                value += (afterText ? "\n" : "") + paragraph
+                afterText = true
+            }
+        }
+        return value
+    }
+
+    /// The string whose `setValue` rebuilds `layout` in Slack's composer with `value`'s
+    /// text: Slack starts a new paragraph at each U+2028 and keeps none of them in the
+    /// text (S3 10-27, 7.4/7.5), so paragraphs, empty ones as "", are joined by U+2028.
+    /// nil when `value` is not what `layout` reads as.
+    public static func slackEncoding(value: String, layout: [Bool]) -> String? {
+        var rest = Substring(value)
+        var paragraphs: [String] = []
+        for (index, empty) in layout.enumerated() {
+            if empty || (index > 0 && !layout[index - 1]) {
+                guard rest.first == "\n" else { return nil }
+                rest.removeFirst()
+            }
+            if empty { paragraphs.append(""); continue }
+            let text = rest.prefix { $0 != "\n" }
+            guard !text.isEmpty else { return nil }
+            paragraphs.append(String(text))
+            rest = rest.dropFirst(text.count)
+        }
+        guard rest.isEmpty, !paragraphs.isEmpty else { return nil }
+        return paragraphs.joined(separator: "\u{2028}")
+    }
+
+    /// What Slack's AXValue shows for ~0.2 s after a U+2028 write, before it splits the
+    /// paragraphs: the written text itself, U+2028 included (S3 10-27 7.5). nil when there is none.
+    public static func slackPending(_ written: String) -> String? {
+        written.contains("\u{2028}") ? written : nil
+    }
+
+    private static func slackParagraphs(_ suggestion: String) -> [String] {
+        suggestion.replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: CharacterSet(charactersIn: "\n\u{2028}"))
+    }
+
+    /// A suggestion's lines as Slack paragraphs: every "\n" is a paragraph break, so a
+    /// single newline stays a soft line and a blank line stays one empty paragraph.
+    public static func slackEncoding(suggestion: String) -> String {
+        slackParagraphs(suggestion).joined(separator: "\u{2028}")
+    }
+
+    /// What Slack's AXValue reads back after writing `slackEncoding(suggestion:)`.
+    public static func slackNormalized(_ suggestion: String) -> String {
+        slackValue(paragraphs: slackParagraphs(suggestion))
     }
 
     public static let selectionBundleIDs: Set<String> = [
@@ -338,6 +398,8 @@ public actor WriteBackController {
         let mode: WriteMode
         /// Slack only: the focused window title at capture; apply/undo require it unchanged.
         var conversationTitle: String? = nil
+        /// Slack only: the composer's paragraph layout at capture, used to rebuild it on undo.
+        var paragraphs: [Bool]? = nil
     }
 
     private struct UndoRecord: Sendable {
@@ -540,9 +602,19 @@ public actor WriteBackController {
         let expected: String
         let attribute: WriteAttribute
         let replacementRange: NSRange
+        // Slack keeps soft lines only when written as U+2028, and reads every write back
+        // as its text paragraphs joined by "\n".
+        let written = target.conversationTitle != nil
+            ? WriteBackPolicy.slackEncoding(suggestion: suggestion) : suggestion
         switch target.mode {
         case .wholeValue:
-            expected = suggestion
+            expected = target.conversationTitle != nil
+                ? WriteBackPolicy.slackNormalized(suggestion) : suggestion
+            // Slack reads both back the same, so read-back and undo could not tell them apart.
+            guard expected != target.originalValue else {
+                state = .failed(.noChange)
+                return .failed(.noChange)
+            }
             attribute = .value
             replacementRange = NSRange(location: 0, length: (expected as NSString).length)
         case .selection:
@@ -586,7 +658,7 @@ public actor WriteBackController {
         let setError: Int32
         switch attribute {
         case .value:
-            setError = access.setValue(suggestion, on: target.element)
+            setError = access.setValue(written, on: target.element)
         case .selectedText:
             setError = access.setSelectedText(suggestion, on: target.element)
         case .selectedTextRange:
@@ -594,6 +666,7 @@ public actor WriteBackController {
         }
 
         switch readBack(original: target.originalValue, expected: expected,
+                        pending: target.conversationTitle != nil ? WriteBackPolicy.slackPending(written) : nil,
                         element: target.element) {
         case .applied:
             state = .verified
@@ -657,6 +730,7 @@ public actor WriteBackController {
 
         state = .writing
         let setError: Int32
+        var pending: String?
         if record.target.mode == .selection {
             let rangeError = access.setSelectedRange(record.replacementRange,
                                                      on: record.target.element)
@@ -674,12 +748,17 @@ public actor WriteBackController {
             setError = access.setSelectedText(record.target.selectedText ?? "",
                                               on: record.target.element)
         } else {
-            setError = access.setValue(record.target.originalValue,
-                                       on: record.target.element)
+            // Slack: rebuild the captured paragraph layout, not just the text.
+            let original = record.target.paragraphs.flatMap {
+                WriteBackPolicy.slackEncoding(value: record.target.originalValue, layout: $0)
+            } ?? record.target.originalValue
+            setError = access.setValue(original, on: record.target.element)
+            if record.target.paragraphs != nil { pending = WriteBackPolicy.slackPending(original) }
         }
 
         switch readBack(original: record.appliedValue,
                         expected: record.target.originalValue,
+                        pending: pending,
                         element: record.target.element) {
         case .applied:
             undoRecord = nil
@@ -746,6 +825,7 @@ public actor WriteBackController {
         // Only now read document text.
         guard let value = access.value(of: element) else { return .failure(.valueUnavailable) }
         guard value.isEmpty == false else { return .failure(.emptyText) }
+        let paragraphs = conversationTitle != nil ? access.paragraphLayout(of: element) : nil
 
         // Whole-value-only bundles and forced whole-value requests never need
         // AXSelectedTextRange (Safari contenteditable cannot provide it).
@@ -760,7 +840,8 @@ public actor WriteBackController {
                                            selectionRange: nil,
                                            selectedText: nil,
                                            mode: .wholeValue,
-                                           conversationTitle: conversationTitle))
+                                           conversationTitle: conversationTitle,
+                                           paragraphs: paragraphs))
         }
 
         // Selection-capable apps keep auto selection-vs-whole behavior.
@@ -784,7 +865,8 @@ public actor WriteBackController {
                                            selectionRange: nil,
                                            selectedText: nil,
                                            mode: .wholeValue,
-                                           conversationTitle: conversationTitle))
+                                           conversationTitle: conversationTitle,
+                                           paragraphs: paragraphs))
         }
         if let failure = settableFailure(for: .selectedText, on: element) {
             return .failure(failure)
@@ -837,8 +919,16 @@ public actor WriteBackController {
         guard access.value(of: target.element) == target.originalValue else {
             return .targetChanged(.valueChanged)
         }
-        if target.conversationTitle != nil, access.hasRichContent(target.element) {
-            return .richContent
+        if target.conversationTitle != nil {
+            if access.hasRichContent(target.element) { return .richContent }
+            // Copy-only unless undo can rebuild the exact captured layout.
+            guard let layout = target.paragraphs,
+                  WriteBackPolicy.slackEncoding(value: target.originalValue, layout: layout) != nil else {
+                return .richContent
+            }
+            guard access.paragraphLayout(of: target.element) == layout else {
+                return .targetChanged(.valueChanged)
+            }
         }
         if target.mode == .selection {
             guard let range = target.selectionRange,
@@ -902,7 +992,8 @@ public actor WriteBackController {
     /// The deadline is checked between reads, so one AX read can still block up
     /// to the adapter's messaging timeout; that per-call timeout is the hard
     /// ceiling on this loop's total duration.
-    private func readBack(original: String, expected: String,
+    /// `pending` is a known in-between value that counts like `original` (Slack's U+2028 write).
+    private func readBack(original: String, expected: String, pending: String? = nil,
                           element: TargetElement) -> WriteCheck {
         let deadline = access.uptime() + max(0, config.readBackTimeout)
         let interval = max(0.001, config.readBackInterval)
@@ -911,7 +1002,7 @@ public actor WriteBackController {
                 return .unexpected
             }
             if current == expected { return .applied }
-            if current != original { return .unexpected }
+            if current != original, current != pending { return .unexpected }
             let remaining = deadline - access.uptime()
             if remaining <= 0 { return .unconfirmed }
             access.sleep(min(interval, remaining))
@@ -1005,7 +1096,7 @@ public struct SystemTextTargetAccess: TextTargetAccess {
     }
 
     /// Bounded walk (depth 4, 300 nodes) applying `WriteBackPolicy.childrenAreRich` to
-    /// each node's children, and `paragraphsRestorable` to the composer's own children.
+    /// each node's children.
     /// Unknown or unreadable trees count as plain;
     /// the value/readback checks still guard the write itself.
     public func hasRichContent(_ element: TargetElement) -> Bool {
@@ -1031,9 +1122,22 @@ public struct SystemTextTargetAccess: TextTargetAccess {
                 queue.append((child, depth + 1))
             }
             if WriteBackPolicy.childrenAreRich(roles, subroles: subroles) { return true }
-            if depth == 0, !WriteBackPolicy.paragraphsRestorable(roles, subroles: subroles) { return true }
         }
         return false
+    }
+
+    public func paragraphLayout(of element: TargetElement) -> [Bool]? {
+        var raw: CFTypeRef?
+        guard let root = element.axElement,
+              AXUIElementCopyAttributeValue(root, "AXChildren" as CFString, &raw) == .success,
+              let children = raw as? [AXUIElement] else { return nil }
+        let attribute = { (child: AXUIElement, name: String) -> String in
+            var value: CFTypeRef?
+            return AXUIElementCopyAttributeValue(child, name as CFString, &value) == .success
+                ? (value as? String ?? "") : ""
+        }
+        return WriteBackPolicy.paragraphLayout(children.map { attribute($0, "AXRole") },
+                                               subroles: children.map { attribute($0, "AXSubrole") })
     }
 
     public func setSelectedText(_ text: String, on element: TargetElement) -> Int32 {

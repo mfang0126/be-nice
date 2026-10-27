@@ -135,7 +135,7 @@ D1 三张卡原文（输入 `[be-nice test] 麻烦你明天之前看一下构建
 
 结论：Slack 每段都是一个 AXGroup、里面只有一个 AXStaticText，换行和空行都不会把一段切成多段文字，所以普通多行草稿不会被拦。规则**无需收窄**，D3'/D4'/C1'/线程用例无需重跑。加粗、行内代码同样会被识别为富内容（同一段里出现多段文字）。
 
-注：Slack 的 AXValue 不含空段落（三段带空行的草稿读出来只有单个 `\n`），所以读回对比用的是替换前后的 AXValue，加截图确认空行。
+注：Slack 的 AXValue 不含空段落（三段带空行的草稿读出来只有单个 `\n`），所以读回对比用的是替换前后的 AXValue，加截图确认空行。**更正（7.5）**：这只对“文字段后紧跟的第一个空段”成立，第二个及以后的空段会读成 `\n`。
 
 状态文案改为 “This draft has emoji, mentions, links, lists or formatting that a replace would drop.”（`WriteBack.swift:81`），重装后在 c2 上看到新文案。`run-tests.sh` ALL PASS。清理：频道、线程输入框为空；DM 未碰；安装备份已删；未发送消息。
 
@@ -160,7 +160,7 @@ review 的推断成立：e1–e4 每个节点下最多一个直接 AXStaticText�
 
 | # | 位置 | 草稿 | 入口 | 替换后读回 | 撤销后 AXValue | 结论 |
 |---|---|---|---|---|---|---|
-| f1 | 频道 | 三段带空行（`setValue`，子树：段 / 2×`AXEmptyGroup` / 段 / 2×`AXEmptyGroup` / 段） | Replace with Polite | 与 Polite 卡一致 | 逐字一致，子树同替换前 | 通过 |
+| f1 | 频道 | 三段带空行（`setValue`，子树：段 / 2×`AXEmptyGroup` / 段 / 2×`AXEmptyGroup` / 段；**7.5 注**：只有写入 `\n\n` 时才是 2 个空段，用户手打空行和写单 `\n` 都是 1 个，所以这里写的应是 `\n\n`） | Replace with Polite | 与 Polite 卡一致 | 逐字一致，子树同替换前 | 通过 |
 | f2 | 频道 | Shift+Return 三行（逐字输入，截图无空行） | Replace with Polite | `Could you please provide details on the build, the documentation, and the release?` | 逐字一致 | 通过（见下方已知问题） |
 | f3 | 线程 | `[be-nice test] Thanks, I will look at it after lunch.` | Rewrite 出现；Replace with Polite | `Thank you for your patience; I will review it after lunch.`（写进线程框，频道框为空） | 逐字一致 | 通过 |
 
@@ -177,10 +177,10 @@ review 的推断成立：e1–e4 每个节点下最多一个直接 AXStaticText�
 ### 7.1 原因
 
 Slack 走整篇写入：替换是 `setValue(建议)`，撤销是 `setValue(原 AXValue)`（`WriteBack.swift` apply/undo），不粘贴、不发按键。
-- AXValue 用单个 `\n` 连接有字的段落，空段落不出现。
-- Slack 把写入的每个 `\n` 变成“新段落 + 一个空段落”，也就是一行空行。7.3 b 用 setValue 写单 `\n` 的三段，截图有空行，这一点已再次确认。
+- AXValue 用单个 `\n` 连接有字的段落，空段落不出现。（**7.5 更正**：只有文字段后的第一个空段不出现，其余空段各读成一个 `\n`。）
+- Slack 把写入的每个 `\n` 变成“新段落 + 一个空段落”，也就是一行空行。（**7.5 更正**：`\n` 连写 k 个得到 k 个空段。）7.3 b 用 setValue 写单 `\n` 的三段，截图有空行，这一点已再次确认。
 
-所以 setValue 只能还原“段 (空段 段)*”这种结构：
+所以 setValue 只能还原“段 (空段 段)*”这种结构（**7.5**：修复 C 第二轮改为按段落结构写 U+2028，所有纯段落结构都能还原，这条规则已删除）：
 - Shift+Return 的行是相邻段落，中间没有空段（6.4 b），无法还原，撤销后会多出空行（6.5 f2）。
 - 双空行、段首空行、段尾空行也无法还原。
 - 6.4 a 的单空行分段能还原，只是凑巧和 setValue 的结果一致。
@@ -216,3 +216,47 @@ Undo 走状态胶囊：先点 Slack 的 Messages 标签让输入框失焦，再�
 **结论：以后的替换和撤销可以保留软换行。** 写入前把字符串按原结构编码：相邻段落之间写 U+2028，单空行写 `\n`。Slack 写入后的结构和原草稿一致，AXValue 仍然读回 `\n`，现有的读回比对不用改。撤销要按捕获时的段落结构编码原文。替换要决定建议里的单个 `\n` 是软换行还是空行，建议沿用原草稿的风格。要做到这些，需要在 capture 时记下段落结构，并在 Slack 写入层做编码，属于新功能，按 AGENTS 先写进 PLAN。还需要实测：双空行（`\n` 加 U+2028？）、段首/段尾空行、线程输入框、发出后的消息（需用户授权才能发送）。
 
 清理：频道、线程输入框已清空（AX 读回为空）；DM 未碰（侧栏 “Drafts & sent 1” 不变）；`~/Applications/.be-nice-install.*` 在 debug-status = 0 后删除；未发送任何消息。GUI 使用时段 21:36–21:39。
+
+### 7.5 第二轮：空行结构复测 + U+2028 写回（22:24–22:36，分支 `mfang0126/be-nice-fix-linebreaks`）
+
+**修复 1（无 GUI，提交 ad9139d）**：`hasRichContent` 读 AXRole 失败时以前只跳过 role、仍追加 subrole，两个数组错位后 `paragraphsRestorable` 返回 true，可能放行替换。改为失败时追加 `""` 保持对齐；第 0 层任何非 AXGroup 或读不到的 role 都不可还原。3 条新单测在 58879c9 上失败（scratch worktree，已删）。第二轮里这个函数换成了 `paragraphLayout`，规则不变：第 0 层只认 AXGroup，subrole 只认 `""` 和 `AXEmptyGroup`，读不到或数组错位一律只给复制。
+
+**空行结构实测**（频道 #all-mingfangtech，安装版，只读 AX 转储 + 截图；本输入框 Return 发送、Shift+Return 换行，所以“用户手打空行”是 Shift+Return 两次）：
+
+| # | 写法 | AXTextArea 下（段 = AXGroup，空 = AXGroup(`AXEmptyGroup`)） | AXValue |
+|---|---|---|---|
+| a | 用户手打三段，段间 Shift+Return ×2 | 段 / 空 / 段 / 空 / 段 | `a\nb\nc` |
+| b | LCU `setValue("a\nb\nc")` | 段 / 空 / 段 / 空 / 段（截图有空行，与 a 相同） | `a\nb\nc` |
+| c | LCU `setValue("a\n\nb")` | 段 / 空 / 空 / 段（截图两行空） | `a\n\nb` |
+| — | 用户手打 Shift+Return 三行 | 段 / 段 / 段 | `a\nb\nc` |
+| — | `a`+U+2028×2+`b` | 段 / 空 / 段 | `a\nb` |
+| — | `a`+U+2028×3+`b` | 段 / 空 / 空 / 段 | `a\n\nb` |
+| — | U+2028×2 + `a` + U+2028×2 | 空 / 空 / 段 / 空 / 空 | `\n\na\n\n` |
+
+规律（所有行都符合）：
+- **AXValue**：每个空段读成一个 `\n`；两个文字段直接相邻时中间补一个 `\n`。所以“段段”和“段 空 段”都读成 `a\nb`，只看 AXValue 无法还原，这是 Shift+Return 撤销后多出空行的根因。
+- **U+2028 写入**：Slack 在每个 U+2028 处另起一段，空段写成空字符串。按段落列表用 U+2028 连接，上表所有结构都能原样重建，包括双空行、段首和段尾空段。
+- **`\n` 写入**：k 个连续 `\n` 得到 k 个空段，相邻文字段写不出来。
+- 6.5 f1 和 7.1 的矛盾由此解释：f1 当时写的是 `\n\n`，所以是 2 个空段。
+
+**修法（`WriteBack.swift`）**
+- capture 时（仅 Slack）读输入框第 0 层子节点，得到段落结构（`paragraphLayout`）。结构读不到、含非段落子节点，或与 AXValue 对不上（`slackEncoding(value:layout:)` 返回 nil）时，只给 Copy rewrite。预览前、替换前复核结构没变，变了按 `valueChanged` 拒绝。
+- 撤销：按捕获的结构，用 U+2028 连接各段（空段为空串）后整篇写回。读回仍比对原 AXValue。
+- 替换：建议里每个 `\n` 都写成 U+2028，所以单换行是软换行、空一行是一个空段，和卡片上看到的一致。读回比对按上面的 AXValue 规律算出的期望值（`slackNormalized`）。建议和原文读回一样（只差空行）时按“没有变化”拒绝，避免撤销无法区分。
+- 读回：写 U+2028 后约 0.2 s 内 AXValue 是写入的原串（U+2028 还在），之后才拆段。第一次实测因此报 “box changed unexpectedly”。现在把“写入的原串”当作和旧值一样的“还没生效”，继续等；其他任何第三个值仍立即停止。只对 Slack 生效。
+- 单测：WriteBackTests 第 30 组改写，含上表 4 种实测结构的 AXValue 模型和编码、替换后撤销还原 4 种结构、写入中间值、读回相同拒绝、结构变化拒绝、结构读不到只给复制。去掉中间值放行后 4 条失败（已验证）。`run-tests.sh` ALL PASS。
+
+**真实 Slack 复测**（最终安装版，debug-status = 0，截图 + AX 子树）
+
+| # | 位置 | 草稿 | 入口 | 替换后 | 撤销后 | 结论 |
+|---|---|---|---|---|---|---|
+| a | 频道 | Shift+Return 三行（逐字输入，段/段/段） | **Replace with Polite**（以前只给 Copy）。卡片改成 “…build⏎and the documentation⏎⏎before lunch?” | 截图：前两行紧挨，后面空一行；子树 段/段/空/段；状态 Replaced | 截图三行紧挨；子树 段/段/段；AXValue 逐字一致 | 通过 |
+| b | 频道 | 三段，段间 Shift+Return ×2（段/空/段/空/段） | Replace with Polite（模型给单行） | 单段 | 子树 段/空/段/空/段，截图同替换前，AXValue 逐字一致 | 通过 |
+| c | 频道 | 单行 | Replace with Polite | `[be-nice test] Could you please check the build before lunch?` | 单行，逐字一致 | 通过 |
+| d | 线程 | Shift+Return 两行 | Replace with Polite，卡片改成两行 | 截图两行紧挨 | 子树 段/段，AXValue 逐字一致 | 通过 |
+
+**发送测试（用户授权的唯一一条，LCU 按 Return 发送，不是 be-nice 发的）**：频道草稿 Shift+Return 两行 → be-nice 替换为 `[be-nice test] u2028 check` + 软换行 + `This is the second line.`（输入框子树 段/段）→ 发送。消息显示为两行、中间无空行。AX 读回消息：两个 AXStaticText `[be-nice test] u2028 check`、`This is the second line.`，消息标题 `Ming Fang: [be-nice test] u2028 check This is the second line. 10:35 PM.`，**全部字符为 ASCII，没有 U+2028 或其他特殊字符**。没有用剪贴板复制（避免覆盖用户剪贴板），以 AX 读回为准。结论：U+2028 只在写入时用，Slack 存的是普通段落，发出去是普通换行，保留在 Replace 里。
+
+**已知限制**：空格-only 的段落按文字段处理（未实测）；结构变化检查只比第 0 层。
+
+清理：频道、线程输入框为空（AX 读回只剩一个空段）；DM 未碰（侧栏 “Drafts & sent 1” 不变）；开始时频道输入框里有一个空的有序列表 “1.”（无文字，前一轮列表测试留下），已在测试中清掉；`~/Applications/.be-nice-install.*` 已删；临时诊断日志代码已删除、未提交。除上面一条授权消息外未发送任何消息。GUI 使用时段 22:24–22:36。
