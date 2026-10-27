@@ -568,15 +568,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         own.tag = index
         own.identifier = Self.writeOwnID
         popup.menu?.addItem(own)
+        if let custom = choices.first(where: { !RewriteStyle.presets.contains($0) }) {
+            let delete = NSMenuItem(title: "Delete “\(custom.name)”", action: #selector(slotPicked(_:)), keyEquivalent: "")
+            delete.target = self
+            delete.tag = index
+            delete.identifier = Self.deleteOwnID
+            popup.menu?.addItem(delete)
+        }
         let at = choices.firstIndex(of: selected) ?? 0
         popup.selectItem(at: at)
         lastPick[index] = at
     }
 
     private static let writeOwnID = NSUserInterfaceItemIdentifier("writeOwn")
+    private static let deleteOwnID = NSUserInterfaceItemIdentifier("deleteOwn")
 
     @objc private func slotPicked(_ item: NSMenuItem) {
         let index = item.tag
+        if item.identifier == Self.deleteOwnID { return removeCustomStyle(index) }
         guard item.identifier == Self.writeOwnID else {
             lastPick[index] = slotPopups[index].indexOfSelectedItem
             return
@@ -608,6 +617,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             guard response == .alertFirstButtonReturn else { return }
             self?.addCustomStyle(index, name: name.stringValue, instruction: instruction.stringValue)
         }
+    }
+
+    /// Drops the slot's written style and shows that slot's default preset again.
+    func removeCustomStyle(_ index: Int) {
+        guard RewriteStyle.defaultSlots.indices.contains(index) else { return }
+        let fallback = RewriteStyle.defaultSlots[index]
+        showSlotMenu(index, choices: RewriteStyle.presets, selected: fallback)
     }
 
     /// Puts a written style into the slot, replacing an earlier custom one.
