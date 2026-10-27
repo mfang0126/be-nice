@@ -164,11 +164,11 @@ final class OptimizerController {
                 pendingTarget = nil
                 shown = nil  // holds the client and token
                 previewWindow.dismiss()
-                showStatus("Replaced", anchor: target.anchorRect)
+                showStatus("Replaced", anchor: target.liveAnchorRect)
             case .failed(let error):
                 uncertainWrite = recovery === core
                 previewWindow.resumeCopyOnly(reason: error.message)
-                showStatus(error.message, anchor: target.anchorRect)
+                showStatus(error.message, anchor: target.liveAnchorRect)
             }
         }
     }
@@ -188,8 +188,8 @@ final class OptimizerController {
             case .restored:
                 recovery = nil
                 recoveryTarget = nil
-                showStatus("Restored", anchor: target.anchorRect)
-            case .failed(let error): showStatus(error.message, anchor: target.anchorRect)
+                showStatus("Restored", anchor: target.liveAnchorRect)
+            case .failed(let error): showStatus(error.message, anchor: target.liveAnchorRect)
             }
         }
     }
@@ -229,7 +229,7 @@ final class OptimizerController {
         statusWindow.hide()
         // Only a possibly-written failed replace keeps its Undo on screen; a fresh rewrite never re-offers an old one.
         if returnToTarget, uncertainWrite, let target = recoveryTarget {
-            showStatus("Undo last replace", anchor: target.anchorRect)
+            showStatus("Undo last replace", anchor: target.liveAnchorRect)
         }
     }
 

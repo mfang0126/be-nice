@@ -24,7 +24,7 @@ harness = r'''
 import Foundation
 import CoreGraphics
 struct TriggerController {
-    struct Target { let pid: Int32; let bundleID: String; let anchorRect: CGRect = .zero }
+    struct Target { let pid: Int32; let bundleID: String; let anchorRect: CGRect = .zero; var liveAnchorRect: CGRect { .zero } }
 }
 enum Reason { case notFrontmost }
 enum Failure { case targetChanged(Reason); var message: String { "failed" } }

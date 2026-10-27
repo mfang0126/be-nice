@@ -223,6 +223,14 @@ private enum TriggerAX {
             ancestorRoles: ancestors, windowTitle: windowTitle, secureInputEnabled: false) else { return nil }
         // Slack: anchor to the composer box (the nearest ancestor that also holds the
         // formatting and send toolbars) so the button never covers Slack's controls.
+        guard let rect = anchorRect(of: element, bundleID: bundleID, deadline: deadline) else { return nil }
+
+        return Snapshot(pid: pid, bundleID: bundleID, role: role, mode: mode,
+                        axRect: rect, element: element)
+    }
+
+    /// The rect the entry and status pill hang from: the field, or in Slack its composer box.
+    static func anchorRect(of element: AXUIElement, bundleID: String, deadline: TimeInterval) -> CGRect? {
         guard let fieldRect = geometry(of: element, deadline: deadline) else { return nil }
         var rect = fieldRect
         if bundleID == TriggerPolicy.slackBundleID,
@@ -231,9 +239,7 @@ private enum TriggerAX {
            boxRect.contains(fieldRect), boxRect.height <= 400 {  // never a page-sized container
             rect = boxRect
         }
-
-        return Snapshot(pid: pid, bundleID: bundleID, role: role, mode: mode,
-                        axRect: rect, element: element)
+        return rect
     }
 
     /// Nearest ancestor (up to 4 levels) that directly contains an AXToolbar: in
@@ -444,6 +450,17 @@ final class TriggerController {
         /// Revalidate before writing: focus may have moved between this
         /// callback and the actual write-back.
         let element: AXUIElement
+
+        /// Where the composer is now. It grows and shrinks with the draft, so `anchorRect`
+        /// (read when the entry was clicked) goes stale after a replace or undo. `.zero`
+        /// when it cannot be read: the status pill then sits in the screen corner.
+        var liveAnchorRect: CGRect {
+            guard let primary = NSScreen.screens.first else { return .zero }
+            AXUIElementSetMessagingTimeout(element, TriggerAX.callTimeout)
+            let deadline = ProcessInfo.processInfo.systemUptime + TriggerAX.snapshotDeadline
+            guard let ax = TriggerAX.anchorRect(of: element, bundleID: bundleID, deadline: deadline) else { return .zero }
+            return TriggerGeometry.appKitRect(fromAX: ax, primaryScreenFrame: primary.frame)
+        }
     }
 
     typealias Handler = @MainActor (Target) -> Void
