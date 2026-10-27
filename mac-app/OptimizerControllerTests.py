@@ -10,7 +10,7 @@ source = (Path(__file__).parent / "Sources/benice/OptimizerController.swift").re
 
 
 def method(name):
-    start = source.index(f"    private func {name}(")
+    start = max(source.find(f"    private func {name}("), source.find(f"    func {name}("))
     opening = source.index("{", start)
     depth = 1
     end = opening + 1
@@ -24,16 +24,22 @@ harness = r'''
 import Foundation
 import CoreGraphics
 struct TriggerController {
-    struct Target { let pid: Int32; let bundleID: String; let anchorRect: CGRect = .zero }
+    struct Target { let pid: Int32; let bundleID: String; let anchorRect = CGRect(x: 1, y: 2, width: 3, height: 4)
+        nonisolated(unsafe) static var live = CGRect(x: 10, y: 20, width: 30, height: 40)
+        var liveAnchorRect: CGRect { Self.live } }
 }
 enum Reason { case notFrontmost }
 enum Failure { case targetChanged(Reason); var message: String { "failed" } }
 enum ApplyOutcome { case applied; case failed(Failure) }
+enum UndoOutcome { case restored; case failed(Failure) }
 actor WriteBackController {
     var undoAvailable = true
     var writes = 0
     var cancellations = 0
-    func apply(replacement: String) -> ApplyOutcome { writes += 1; return .failed(.targetChanged(.notFrontmost)) }
+    var succeed = false
+    func setSucceed(_ value: Bool) { succeed = value }
+    func apply(replacement: String) -> ApplyOutcome { writes += 1; return succeed ? .applied : .failed(.targetChanged(.notFrontmost)) }
+    func undo() -> UndoOutcome { succeed ? .restored : .failed(.targetChanged(.notFrontmost)) }
     func cancel() { cancellations += 1 }
 }
 @MainActor final class NSRunningApplication {
@@ -55,7 +61,13 @@ actor WriteBackController {
     func resumeCopyOnly(reason: String) { copyOnly = true }
     func dismiss() {}
 }
-@MainActor final class Status { func hide() {} }
+@MainActor final class Status {
+    var shown: [CGRect] = []
+    var reanchored: [CGRect] = []
+    func hide() {}
+    func show(_ message: String, target: CGRect, undo: (() -> Void)?, cancel: (() -> Void)?) { shown.append(target) }
+    func reanchor(_ target: CGRect) { reanchored.append(target) }
+}
 @MainActor final class Controller {
     let previewWindow = Preview()
     let statusWindow = Status()
@@ -67,13 +79,13 @@ actor WriteBackController {
     var regenerate: Task<Void, Never>?
     var shown: (original: String, options: [String])?
     var uncertainWrite = false
+    var reanchor: Task<Void, Never>?
     var generation: UInt64 = 7
     var busy = false
     var restored = true
     func restoreFocus(_ target: TriggerController.Target) async -> Bool { restored }
-    func showStatus(_ message: String, anchor: CGRect) {}
 '''
-harness += method("apply") + "\n" + method("cancelPreview") + "\n}\n"
+harness += method("apply") + "\n" + method("cancelPreview") + "\n" + method("showStatus") + "\n" + method("undoLast") + "\n}\n"
 harness += r'''
 @main struct Tests {
     @MainActor static func main() async {
@@ -116,7 +128,44 @@ harness += r'''
                 }
             }
         }
-        print("OptimizerControllerTests PASS (8 failed-apply/cancel scenarios)")
+        // Result pills use the live composer rect, then re-anchor once, without blocking.
+        let live = TriggerController.Target.live
+        let stale = CGRect(x: 1, y: 2, width: 3, height: 4)
+        for succeed in [true, false] {
+            let controller = Controller()
+            let core = WriteBackController()
+            await core.setSucceed(succeed)
+            let target = TriggerController.Target(pid: 42, bundleID: "fixture.app")
+            controller.pending = core
+            controller.pendingTarget = target
+            controller.apply("replacement", token: 7)
+            for _ in 0..<10000 { if !controller.busy { break }; await Task.yield() }
+            precondition(controller.statusWindow.shown == [live], "apply result pill must use the live rect")
+            precondition(controller.statusWindow.shown != [stale])
+            TriggerController.Target.live = CGRect(x: 50, y: 60, width: 70, height: 80)
+            try? await Task.sleep(for: .milliseconds(400))
+            precondition(controller.statusWindow.reanchored == [TriggerController.Target.live], "pill must re-anchor once")
+            TriggerController.Target.live = live
+            controller.recovery = core
+            controller.recoveryTarget = target
+            controller.statusWindow.shown = []
+            controller.undoLast()
+            for _ in 0..<10000 { if !controller.busy { break }; await Task.yield() }
+            await Task.yield()
+            precondition(controller.statusWindow.shown == [live], "undo result pill must use the live rect")
+        }
+        // A new trigger or cancel drops a pending re-anchor.
+        let controller = Controller()
+        controller.showStatus("Restored", anchor: stale, refresh: { CGRect(x: 9, y: 9, width: 9, height: 9) })
+        controller.cancelPreview()
+        try? await Task.sleep(for: .milliseconds(300))
+        precondition(controller.statusWindow.reanchored.isEmpty, "cancel must stop the re-anchor")
+        // An unreadable (empty) refresh leaves the pill where it is.
+        let steady = Controller()
+        steady.showStatus("Restored", anchor: stale, refresh: { .zero })
+        try? await Task.sleep(for: .milliseconds(300))
+        precondition(steady.statusWindow.reanchored.isEmpty, "empty refresh must not move the pill")
+        print("OptimizerControllerTests PASS (8 failed-apply/cancel scenarios, live-rect pills)")
     }
 }
 '''
