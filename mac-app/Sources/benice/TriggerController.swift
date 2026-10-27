@@ -39,20 +39,12 @@ enum AppSupport: Equatable, Sendable {
     case unknown
 }
 
-/// Conservative projection of the PLAN.md M0 support matrix. Only apps whose
-/// text paths were actually verified appear here; Slack, VS Code, Terminal and
-/// every unlisted bundle stay out. `com.github.Electron` is the throwaway M0
-/// test target; real Electron apps are not claimed until tested.
+/// Slack only (user decision 10-27 22:49): no other app gets the entry. Selection
+/// mode stays in the code but no app reaches it.
 enum TriggerPolicy {
-    static let selectionBundleIDs: Set<String> = [
-        "com.apple.TextEdit",
-        "com.apple.Notes",
-    ]
+    static let selectionBundleIDs: Set<String> = []
 
     static let wholeValueBundleIDs: Set<String> = [
-        "com.apple.Safari",
-        "com.google.Chrome",
-        "com.github.Electron",
         slackBundleID,
     ]
 
