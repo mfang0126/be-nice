@@ -306,9 +306,25 @@ public enum WriteBackPolicy {
         written.contains("\u{2028}") ? written : nil
     }
 
+    /// A model candidate as Slack text: every other line separator (CRLF, CR, U+2029,
+    /// U+0085) becomes "\n" and zero-width characters (U+200B-U+200D, U+FEFF) are dropped.
+    /// Only for candidates; the user's original is never touched.
+    public static func slackCandidate(_ suggestion: String) -> String {
+        var text = suggestion.replacingOccurrences(of: "\r\n", with: "\n")
+        for separator in ["\r", "\u{2029}", "\u{0085}"] {
+            text = text.replacingOccurrences(of: separator, with: "\n")
+        }
+        text.unicodeScalars.removeAll { ["\u{200B}", "\u{200C}", "\u{200D}", "\u{FEFF}"].contains($0) }
+        return text
+    }
+
     private static func slackParagraphs(_ suggestion: String) -> [String] {
-        suggestion.replacingOccurrences(of: "\r\n", with: "\n")
-            .components(separatedBy: CharacterSet(charactersIn: "\n\u{2028}"))
+        slackCandidate(suggestion).components(separatedBy: CharacterSet(charactersIn: "\n\u{2028}"))
+    }
+
+    /// The paragraph layout Slack builds from `slackEncoding(suggestion:)`.
+    public static func slackLayout(_ suggestion: String) -> [Bool] {
+        slackParagraphs(suggestion).map(\.isEmpty)
     }
 
     /// A suggestion's lines as Slack paragraphs: every "\n" is a paragraph break, so a
@@ -322,15 +338,11 @@ public enum WriteBackPolicy {
         slackValue(paragraphs: slackParagraphs(suggestion))
     }
 
-    public static let selectionBundleIDs: Set<String> = [
-        "com.apple.TextEdit",
-        "com.apple.Notes",
-    ]
+    /// Slack only (user decision 10-27 22:49). Selection mode stays in the core but no
+    /// app reaches it.
+    public static let selectionBundleIDs: Set<String> = []
 
     public static let wholeValueBundleIDs: Set<String> = [
-        "com.apple.Safari",
-        "com.google.Chrome",
-        "com.github.Electron",
         slackBundleID,
     ]
 
@@ -408,17 +420,25 @@ public actor WriteBackController {
         let appliedValue: String
         /// Where the suggestion now sits in `appliedValue`.
         let replacementRange: NSRange
+        /// Slack only: the raw U+2028 string Slack shows until it splits the paragraphs.
+        var pendingValue: String? = nil
+        /// Slack only: the paragraph layout after apply. Undo refuses any other layout,
+        /// since an added or removed empty paragraph does not change AXValue.
+        var appliedLayout: [Bool]? = nil
     }
 
     private enum WriteCheck {
         case applied
         case unconfirmed
         case unexpected
+        /// The string matched but Slack's paragraph layout did not (observed layout).
+        case layoutMismatch([Bool]?)
     }
 
     private let access: any TextTargetAccess
     private let client: any SuggestionProviding
     private let config: WriteBackConfig
+    private let support: @Sendable (String?) -> WriteBackAppSupport
 
     public private(set) var state: WriteBackState = .idle
     public private(set) var preview: SuggestionPreview?
@@ -432,9 +452,18 @@ public actor WriteBackController {
     public init(access: any TextTargetAccess,
                 client: any SuggestionProviding,
                 config: WriteBackConfig = WriteBackConfig()) {
+        self.init(access: access, client: client, config: config, support: WriteBackPolicy.support)
+    }
+
+    /// Selftests inject a fixture policy here to run the generic core on non-Slack bundles.
+    init(access: any TextTargetAccess,
+         client: any SuggestionProviding,
+         config: WriteBackConfig = WriteBackConfig(),
+         support: @escaping @Sendable (String?) -> WriteBackAppSupport) {
         self.access = access
         self.client = client
         self.config = config
+        self.support = support
     }
 
     /// True when a product-managed undo is available and no operation is in
@@ -583,7 +612,8 @@ public actor WriteBackController {
               previewGeneration == generation else {
             return .failed(.nothingToApply)
         }
-        let suggestion = replacement ?? preview.suggestion
+        var suggestion = replacement ?? preview.suggestion
+        if target.conversationTitle != nil { suggestion = WriteBackPolicy.slackCandidate(suggestion) }
         guard !suggestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .failed(.emptySuggestion)
         }
@@ -650,9 +680,14 @@ public actor WriteBackController {
 
         // Possible-write record: installed BEFORE the setter so an async or
         // late write can always be undone.
+        let slack = target.conversationTitle != nil
+        let pending = slack ? WriteBackPolicy.slackPending(written) : nil
+        let layout = slack ? WriteBackPolicy.slackLayout(suggestion) : nil
         undoRecord = UndoRecord(target: target,
                                 appliedValue: expected,
-                                replacementRange: replacementRange)
+                                replacementRange: replacementRange,
+                                pendingValue: pending,
+                                appliedLayout: layout)
 
         state = .writing
         let setError: Int32
@@ -666,14 +701,19 @@ public actor WriteBackController {
         }
 
         switch readBack(original: target.originalValue, expected: expected,
-                        pending: target.conversationTitle != nil ? WriteBackPolicy.slackPending(written) : nil,
-                        element: target.element) {
+                        pending: pending, layout: layout, element: target.element) {
         case .applied:
             state = .verified
             refocusSlackComposer(target)  // leave the caret in Slack's composer
             return .applied
         case .unconfirmed:
             let failure = WriteBackFailure.writeUnconfirmed(setError)
+            state = .failed(failure)
+            return .failed(failure)
+        case .layoutMismatch(let observed):
+            // Our write, laid out differently by Slack: undo may rebuild from that layout.
+            undoRecord?.appliedLayout = observed
+            let failure = WriteBackFailure.writeUnexpected
             state = .failed(failure)
             return .failed(failure)
         case .unexpected:
@@ -709,13 +749,19 @@ public actor WriteBackController {
             return .failed(failure)
         }
 
-        if current == record.target.originalValue {
+        // Slack: AXValue cannot show an added or removed empty paragraph, so the layout
+        // must match too. A still-pending write (raw U+2028 string) has no layout yet.
+        let slack = record.target.conversationTitle != nil
+        let layout = slack && current != record.pendingValue
+            ? access.paragraphLayout(of: record.target.element) : nil
+        if current == record.target.originalValue, !slack || layout == record.target.paragraphs {
             undoRecord = nil
             state = .verified
             return .restored
         }
-        guard current == record.appliedValue else {
-            // Third value: never overwrite it.
+        guard current == record.pendingValue
+                || (current == record.appliedValue && (!slack || layout == record.appliedLayout)) else {
+            // Third value or layout: never overwrite it.
             let failure = WriteBackFailure.targetChanged(.valueChanged)
             state = .failed(failure)
             return .failed(failure)
@@ -731,6 +777,7 @@ public actor WriteBackController {
         state = .writing
         let setError: Int32
         var pending: String?
+        var restoreLayout: [Bool]?
         if record.target.mode == .selection {
             let rangeError = access.setSelectedRange(record.replacementRange,
                                                      on: record.target.element)
@@ -753,12 +800,16 @@ public actor WriteBackController {
                 WriteBackPolicy.slackEncoding(value: record.target.originalValue, layout: $0)
             } ?? record.target.originalValue
             setError = access.setValue(original, on: record.target.element)
-            if record.target.paragraphs != nil { pending = WriteBackPolicy.slackPending(original) }
+            if record.target.paragraphs != nil {
+                pending = WriteBackPolicy.slackPending(original)
+                restoreLayout = record.target.paragraphs
+            }
         }
 
         switch readBack(original: record.appliedValue,
                         expected: record.target.originalValue,
                         pending: pending,
+                        layout: restoreLayout,
                         element: record.target.element) {
         case .applied:
             undoRecord = nil
@@ -769,7 +820,7 @@ public actor WriteBackController {
             let failure = WriteBackFailure.writeUnconfirmed(setError)
             state = .failed(failure)
             return .failed(failure)
-        case .unexpected:
+        case .unexpected, .layoutMismatch:
             let failure = WriteBackFailure.writeUnexpected
             state = .failed(failure)
             return .failed(failure)
@@ -791,7 +842,7 @@ public actor WriteBackController {
         if let expected, bundleID != expected.bundleID {
             return .failure(.targetChanged(.bundleChanged))
         }
-        let appSupport = WriteBackPolicy.support(for: bundleID)
+        let appSupport = support(bundleID)
         switch appSupport {
         case .excluded: return .failure(.excludedApp(bundleID))
         case .unsupported: return .failure(.unsupportedApp(bundleID))
@@ -963,8 +1014,18 @@ public actor WriteBackController {
               access.sameElement(focused, record.target.element) else {
             return .failure(.targetChanged(.focusChanged))
         }
-        guard let current = access.value(of: record.target.element) else {
+        guard var current = access.value(of: record.target.element) else {
             return .failure(.valueUnavailable)
+        }
+        // Slack may still show the raw U+2028 string of an unconfirmed apply: wait once,
+        // bounded, for it to split into paragraphs.
+        let deadline = access.uptime() + max(0, config.readBackTimeout)
+        while current == record.pendingValue, access.uptime() < deadline {
+            access.sleep(min(max(0.001, config.readBackInterval), deadline - access.uptime()))
+            guard let next = access.value(of: record.target.element) else {
+                return .failure(.valueUnavailable)
+            }
+            current = next
         }
         return .success(current)
     }
@@ -993,18 +1054,27 @@ public actor WriteBackController {
     /// to the adapter's messaging timeout; that per-call timeout is the hard
     /// ceiling on this loop's total duration.
     /// `pending` is a known in-between value that counts like `original` (Slack's U+2028 write).
+    /// With `layout` (Slack), a matching string also needs that paragraph layout; a layout
+    /// that never matches by the deadline is `.layoutMismatch`.
     private func readBack(original: String, expected: String, pending: String? = nil,
-                          element: TargetElement) -> WriteCheck {
+                          layout: [Bool]? = nil, element: TargetElement) -> WriteCheck {
         let deadline = access.uptime() + max(0, config.readBackTimeout)
         let interval = max(0.001, config.readBackInterval)
+        var mismatch: [Bool]?? = nil
         while true {
             guard let current = access.value(of: element) else {
                 return .unexpected
             }
-            if current == expected { return .applied }
-            if current != original, current != pending { return .unexpected }
+            if current == expected {
+                guard let layout else { return .applied }
+                let observed = access.paragraphLayout(of: element)
+                if observed == layout { return .applied }
+                mismatch = .some(observed)
+            } else if current != original, current != pending {
+                return .unexpected
+            }
             let remaining = deadline - access.uptime()
-            if remaining <= 0 { return .unconfirmed }
+            if remaining <= 0 { return mismatch.map { .layoutMismatch($0) } ?? .unconfirmed }
             access.sleep(min(interval, remaining))
         }
     }

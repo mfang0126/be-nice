@@ -27,10 +27,11 @@ struct WriteBackTests {
         func controller(_ access: FakeAccess,
                         _ suggestion: String = "HELLO") -> WriteBackController {
             WriteBackController(access: access,
-                                client: ImmediateClient(suggestion: suggestion))
+                                client: ImmediateClient(suggestion: suggestion),
+                                support: fixtureSupport)
         }
 
-        /// TextEdit is selection-capable in the core policy.
+        /// TextEdit is selection-capable in the fixture policy (production is Slack only).
         func selectionSetup() -> FakeAccess {
             let access = FakeAccess()
             access.storedValue = "hello world"
@@ -38,7 +39,7 @@ struct WriteBackTests {
             return access
         }
 
-        /// Safari is whole-value-only in the core policy.
+        /// Safari is whole-value-only in the fixture policy (production is Slack only).
         func wholeSetup() -> FakeAccess {
             let access = FakeAccess()
             access.bundles[100] = "com.apple.Safari"
@@ -229,7 +230,7 @@ struct WriteBackTests {
         do {
             let access = selectionSetup()
             let client = BlockingClient()
-            let core = WriteBackController(access: access, client: client)
+            let core = WriteBackController(access: access, client: client, support: fixtureSupport)
             let request = Task { await core.requestPreview() }
             await client.waitUntilStarted()
 
@@ -248,7 +249,7 @@ struct WriteBackTests {
         do {
             let access = wholeSetup()
             let client = BlockingClient()
-            let core = WriteBackController(access: access, client: client)
+            let core = WriteBackController(access: access, client: client, support: fixtureSupport)
             let request = Task { await core.requestPreview() }
             await client.waitUntilStarted()
             access.storedValue = "hello world edited"
@@ -539,7 +540,8 @@ struct WriteBackTests {
             let core = WriteBackController(access: access,
                                            client: ImmediateClient(suggestion: "hello, world."),
                                            config: WriteBackConfig(readBackTimeout: 0.01,
-                                                                   readBackInterval: -5))
+                                                                   readBackInterval: -5),
+                                           support: fixtureSupport)
             _ = await core.requestPreview()
             expect(await core.apply() == .failed(.writeUnconfirmed(0)),
                    "nonpositive read-back interval is clamped and still terminates")
@@ -834,6 +836,137 @@ struct WriteBackTests {
             expect(await core.apply() == .applied, "rich-content check is Slack-only")
         }
 
+        // 31. Production policy is Slack only (user decision 10-27 22:49).
+        for bundle in ["com.apple.TextEdit", "com.apple.Notes", "com.apple.Safari",
+                       "com.google.Chrome", "com.github.Electron"] {
+            expect(WriteBackPolicy.support(for: bundle) == .unsupported, "\(bundle) is not supported")
+            let access = wholeSetup()
+            access.bundles[100] = bundle
+            let core = WriteBackController(access: access, client: ImmediateClient(suggestion: "HELLO"))
+            expect(await core.requestPreview() == .failed(.unsupportedApp(bundle)),
+                   "default controller refuses \(bundle)")
+            expect(!access.calls.contains("value"), "\(bundle) reads no text")
+        }
+        expect(WriteBackPolicy.support(for: slack) == .wholeValue, "Slack is supported")
+        do {
+            let access = slackSetup()
+            let core = WriteBackController(access: access, client: ImmediateClient(suggestion: "hello, world."))
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "default controller replaces in Slack")
+            expect(await core.undo() == .restored, "default controller undoes in Slack")
+        }
+
+        // 32. Anchored on real Slack (S3 7.4/7.5): written string -> (AXValue, layout).
+        let recordedSlack: [String: (String, [Bool])] = [
+            "a": ("a", [false]),                                          // 7.5 c single line
+            "a\(ls)b": ("a\nb", [false, false]),                          // 7.5 d, send test
+            "a\(ls)b\(ls)c": ("a\nb\nc", [false, false, false]),          // 7.4 probe, 7.5 a undo
+            "a\(ls)\(ls)b": ("a\nb", [false, true, false]),               // 7.5 table
+            "a\(ls)\(ls)\(ls)b": ("a\n\nb", [false, true, true, false]),  // 7.5 table
+            "\(ls)\(ls)a\(ls)\(ls)": ("\n\na\n\n", [true, true, false, true, true]),  // 7.5 table
+            "a\(ls)\(ls)b\(ls)\(ls)c": ("a\nb\nc", [false, true, false, true, false]),  // 7.5 b undo
+        ]
+        func recordedSetup(_ draft: String, _ layout: [Bool]) -> FakeAccess {
+            let access = slackSetup()
+            access.storedValue = draft
+            access.layout = layout
+            access.slackRecorded = recordedSlack
+            return access
+        }
+        for (draft, layout, candidate, after, afterLayout) in [
+            ("a\nb\nc", [false, false, false], "a\n\nb", "a\nb", [false, true, false]),        // Shift+Return
+            ("a\nb\nc", [false, true, false, true, false], "a\n\n\nb", "a\n\nb", [false, true, true, false]),
+            ("\n\na\n\n", [true, true, false, true, true], "a\nb", "a\nb", [false, false]),
+        ] {
+            let access = recordedSetup(draft, layout)
+            let core = controller(access, candidate)
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "recorded replace applies over \(layout)")
+            expect(access.storedValue == after && access.layout == afterLayout,
+                   "recorded replace reads back \(afterLayout)")
+            expect(await core.undo() == .restored, "recorded undo restores \(layout)")
+            expect(access.storedValue == draft && access.layout == layout, "recorded undo rebuilds \(layout)")
+        }
+
+        // 33. Read-back checks the layout, not only the string (review finding 1).
+        do {
+            // Undo of Shift+Return [a, b] that Slack rebuilds as [a, empty, b].
+            let access = recordedSetup("a\nb", [false, false])
+            access.slackRecorded?["a\(ls)b"] = ("a\nb", [false, true, false])
+            let core = controller(access, "a")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "setup apply for undo layout mismatch")
+            expect(await core.undo() == .failed(.writeUnexpected), "undo with a wrong layout is not restored")
+            expect(await core.undoAvailable, "undo layout mismatch keeps the record")
+            expect(await core.undo() == .failed(.targetChanged(.valueChanged)),
+                   "retry does not report the wrong layout as already restored")
+        }
+        do {
+            let access = recordedSetup("a", [false])
+            access.slackRecorded?["a\(ls)\(ls)b"] = ("a\nb", [false, false])
+            let core = controller(access, "a\n\nb")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .failed(.writeUnexpected), "apply with a wrong layout is not applied")
+            expect(await core.undoAvailable, "apply layout mismatch keeps the possible-write record")
+            expect(await core.undo() == .restored, "undo still restores after Slack's own layout")
+            expect(access.storedValue == "a" && access.layout == [false], "undo rebuilt the draft")
+        }
+
+        // 34. A pending window longer than the read-back timeout (review finding 2).
+        for pendingReads in [40, 1000] {
+            let access = recordedSetup("a", [false])
+            access.slackPendingReads = pendingReads
+            let core = controller(access, "a\nb")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .failed(.writeUnconfirmed(0)),
+                   "apply still pending at the timeout is unconfirmed (\(pendingReads))")
+            expect(await core.undo() == .restored, "undo of a still-pending write is not refused (\(pendingReads))")
+            expect(access.storedValue == "a" && access.layout == [false], "pending undo restored (\(pendingReads))")
+        }
+
+        // 35. Undo refuses a layout the user changed after apply (review finding 3).
+        do {
+            let access = recordedSetup("a", [false])
+            let core = controller(access, "a\nb")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "setup apply for user layout change")
+            access.layout = [false, true, false]  // user adds a blank line; AXValue stays "a\nb"
+            expect(await core.undo() == .failed(.targetChanged(.valueChanged)),
+                   "undo refuses an added empty paragraph")
+            expect(access.writes.count == 1, "refused undo performs no write")
+        }
+
+        // 36. Candidate separators and zero-width characters (review finding 4).
+        expect(WriteBackPolicy.slackCandidate("a\u{2029}b\u{0085}c\rd\r\ne") == "a\nb\nc\nd\ne",
+               "U+2029, U+0085, CR and CRLF become newlines")
+        expect(WriteBackPolicy.slackCandidate("x\u{200B}y\u{200C}z\u{200D}w\u{FEFF}") == "xyzw",
+               "zero-width characters are stripped from candidates")
+        expect(WriteBackPolicy.slackEncoding(suggestion: "a\u{2029}b") == "a\(ls)b",
+               "U+2029 is a paragraph break, not written verbatim")
+        do {
+            let access = recordedSetup("a", [false])
+            let core = controller(access, "a\u{200B}\u{2029}\u{FEFF}b")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "candidate with U+2029 and zero-width applies")
+            expect(access.writes.last?.1 == "a\(ls)b", "written candidate has no U+2029 or zero-width")
+        }
+        do {
+            let access = slackSetup()
+            let core = controller(access, "\u{200B}\u{FEFF}")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .failed(.emptySuggestion), "zero-width-only candidate is empty")
+            expect(access.writes.isEmpty, "zero-width-only candidate performs no write")
+        }
+        do {
+            let access = slackSetup()
+            access.storedValue = "hi\u{200B}"
+            let core = controller(access, "hello")
+            _ = await core.requestPreview()
+            expect(await core.apply() == .applied, "setup apply over a zero-width original")
+            expect(await core.undo() == .restored && access.writes.last?.1 == "hi\u{200B}",
+                   "undo writes the user's original with its zero-width character")
+        }
+
         if failures == 0 {
             print("WriteBackTests PASS")
         } else {
@@ -844,6 +977,16 @@ struct WriteBackTests {
 }
 
 // MARK: - Fakes
+
+/// The pre-Slack-only support matrix. Production supports only Slack (user decision
+/// 10-27 22:49); the generic core tests still run selection and whole-value mode on these.
+private let fixtureSupport: @Sendable (String?) -> WriteBackAppSupport = { bundleID in
+    switch bundleID {
+    case "com.apple.TextEdit", "com.apple.Notes": return .selection
+    case "com.apple.Safari", "com.google.Chrome", "com.github.Electron": return .wholeValue
+    default: return WriteBackPolicy.support(for: bundleID)
+    }
+}
 
 private struct ImmediateClient: SuggestionProviding {
     let suggestion: String
@@ -914,6 +1057,9 @@ private final class FakeAccess: TextTargetAccess, @unchecked Sendable {
     var slackWrites = false
     /// Reads after a Slack U+2028 write that still show the written text (real Slack: ~0.2 s).
     var slackPendingReads = 0
+    /// Written string -> (AXValue, layout) as recorded in real Slack. When set, the fake
+    /// uses only this table, so a test cannot pass on the model it is checking.
+    var slackRecorded: [String: (String, [Bool])]?
     var roleValue: String? = "AXTextArea"
     var subroleValue: String?
     var storedValue = ""
@@ -1002,11 +1148,14 @@ private final class FakeAccess: TextTargetAccess, @unchecked Sendable {
             storedValue = text
             if slackWrites {
                 let paragraphs = text.components(separatedBy: "\u{2028}")
-                layout = paragraphs.map(\.isEmpty)
-                storedValue = WriteBackPolicy.slackValue(paragraphs: paragraphs)
-                if paragraphs.count > 1 {
-                    valueReads = Array(repeating: text, count: slackPendingReads)
+                if let recorded = slackRecorded {
+                    (storedValue, layout) = recorded[text] ?? ("UNRECORDED WRITE", nil)
+                } else {
+                    layout = paragraphs.map(\.isEmpty)
+                    storedValue = WriteBackPolicy.slackValue(paragraphs: paragraphs)
                 }
+                valueReads = paragraphs.count > 1
+                    ? Array(repeating: text, count: slackPendingReads) : []
             }
             storedRange = NSRange(location: (storedValue as NSString).length, length: 0)
         }

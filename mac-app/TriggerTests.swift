@@ -27,23 +27,26 @@ struct TriggerTests {
         }
         let inWeb = ["AXWindow", "AXWebArea"]
 
-        // Support matrix, conservative per PLAN.md. Browser/Electron whole
-        // value requires actual web content ancestry.
-        expect(decision("com.apple.TextEdit", "AXTextArea") == .show(.selection),
-               "TextEdit -> selection-capable mode")
-        expect(decision("com.apple.Notes", "AXTextArea") == .show(.selection),
-               "Notes text area -> selection-capable mode")
-        expect(decision("com.apple.Notes", "AXTextView") == .show(.selection),
+        // Support matrix: Slack only (user decision 10-27 22:49). Slack whole value
+        // requires actual web content ancestry.
+        expect(decision("com.apple.TextEdit", "AXTextArea") == .hide(.unsupportedApp),
+               "TextEdit is not supported")
+        expect(decision("com.apple.Notes", "AXTextArea") == .hide(.unsupportedApp),
+               "Notes text area is not supported")
+        expect(decision("com.apple.Notes", "AXTextView") == .hide(.unsupportedApp),
+               "Notes text view is not supported")
+        expect(decision("com.tinyspeck.slackmacgap", "AXTextView", ancestors: inWeb)
+                == .show(.wholeValue),
                "text view is a tested text role")
         expect(decision("com.apple.Safari", "AXTextField", ancestors: inWeb)
-                == .show(.wholeValue),
-               "Safari web field -> whole value")
+                == .hide(.unsupportedApp),
+               "Safari web field is not supported")
         expect(decision("com.google.Chrome", "AXTextField", ancestors: inWeb)
-                == .show(.wholeValue),
-               "Chrome web field -> whole value")
+                == .hide(.unsupportedApp),
+               "Chrome web field is not supported")
         expect(decision("com.github.Electron", "AXTextArea", ancestors: inWeb,
-                        windowTitle: "be-nice AX test target") == .show(.wholeValue),
-               "dedicated Electron fixture web field -> whole value")
+                        windowTitle: "be-nice AX test target") == .hide(.unsupportedApp),
+               "dedicated Electron fixture is not supported")
         expect(decision("com.github.Electron", "AXTextArea", ancestors: inWeb,
                         windowTitle: "A real Electron app") == .hide(.unsupportedApp),
                "default Electron bundle with another window is unsupported")
@@ -72,10 +75,10 @@ struct TriggerTests {
                         ancestors: Array(repeating: "AXGroup", count: 9))
                 == .hide(.outsideWebContent),
                "Slack without AXWebArea ancestor is hidden")
-        expect(decision("com.apple.Safari", "AXTextField") == .hide(.outsideWebContent),
-               "Safari address bar without AXWebArea ancestor is hidden")
-        expect(decision("com.github.Electron", "AXTextField") == .hide(.outsideWebContent),
-               "native Electron field without web ancestry is hidden")
+        expect(decision("com.apple.Safari", "AXTextField") == .hide(.unsupportedApp),
+               "Safari address bar is not supported")
+        expect(decision("com.github.Electron", "AXTextField") == .hide(.unsupportedApp),
+               "native Electron field is not supported")
         expect(TriggerPolicy.hasWebAreaAncestor(inWeb), "web area ancestor detected")
         expect(!TriggerPolicy.hasWebAreaAncestor(["AXWindow", "AXToolbar"]),
                "toolbar ancestry is not web content")
@@ -92,26 +95,39 @@ struct TriggerTests {
                "missing bundle id is not claimed")
 
         // Roles outside the tested set are non-text targets.
-        expect(decision("com.apple.Safari", "AXWebArea") == .hide(.nonTextRole),
+        let slack = "com.tinyspeck.slackmacgap"
+        expect(decision(slack, "AXWebArea") == .hide(.nonTextRole),
                "AXWebArea itself is not a trigger target")
-        expect(decision("com.apple.Safari", "AXSearchField") == .hide(.nonTextRole),
+        expect(decision(slack, "AXSearchField") == .hide(.nonTextRole),
                "search field is not in the tested role set")
-        expect(decision("com.apple.Safari", "AXComboBox") == .hide(.nonTextRole),
+        expect(decision(slack, "AXComboBox") == .hide(.nonTextRole),
                "combo box is not in the tested role set")
-        expect(decision("com.apple.TextEdit", "AXButton") == .hide(.nonTextRole),
+        expect(decision(slack, "AXButton") == .hide(.nonTextRole),
                "button is a non-text target")
-        expect(decision("com.apple.Notes", "AXWindow") == .hide(.nonTextRole),
+        expect(decision(slack, "AXWindow") == .hide(.nonTextRole),
                "window is a non-text target")
+        for (bundle, role) in [("com.apple.Safari", "AXWebArea"), ("com.apple.TextEdit", "AXButton"),
+                               ("com.apple.Notes", "AXWindow")] {
+            expect(decision(bundle, role) == .hide(.unsupportedApp), "\(bundle) is not supported")
+        }
 
         // Security gates.
-        expect(decision("com.apple.TextEdit", "AXTextArea", secureInput: true)
+        expect(decision(slack, "AXTextArea", ancestors: inWeb, secureInput: true)
                 == .hide(.secureInput),
                "Secure Input hides even a supported app")
-        expect(decision("com.apple.TextEdit", "AXSecureTextField") == .hide(.secureField),
+        expect(decision("com.apple.TextEdit", "AXTextArea", secureInput: true)
+                == .hide(.secureInput),
+               "Secure Input hides an unsupported app too")
+        expect(decision(slack, "AXSecureTextField") == .hide(.secureField),
                "secure text field role hides")
-        expect(decision("com.apple.Safari", "AXTextField", subrole: "AXSecureTextField",
+        expect(decision("com.apple.TextEdit", "AXSecureTextField") == .hide(.unsupportedApp),
+               "TextEdit is not supported")
+        expect(decision(slack, "AXTextField", subrole: "AXSecureTextField",
                         ancestors: inWeb) == .hide(.secureField),
                "secure subrole hides a password field")
+        expect(decision("com.apple.Safari", "AXTextField", subrole: "AXSecureTextField",
+                        ancestors: inWeb) == .hide(.unsupportedApp),
+               "Safari is not supported")
 
         // Default shortcut: Ctrl+Option+Cmd+Space (Carbon key code 49).
         expect(TriggerController.HotKey.defaultShortcut.keyCode == 49,
