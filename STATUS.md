@@ -1,7 +1,7 @@
 # be-nice 当前状态
 
 > 每次更新**覆盖重写**，只写当前事实，不追加历史。历史见 git log 与 [docs/archive/](docs/archive/)。
-> 更新：2026-10-27 10:15 AEDT
+> 更新：2026-10-27 11:15 AEDT
 
 ## 阶段：S1 Slack 安全写回（私聊已跑通，未交付）
 
@@ -16,7 +16,13 @@
 1. 富内容（emoji/提及/链接）已检测：只给复制、写入前再拒绝。10-27 10:13 实测：纯文本草稿仍为 “Replace with Direct”，带 emoji 草稿变为 “Copy rewrite”；测试草稿已精确恢复。提及和链接的 AX 结构尚未在真实 Slack 中验证。
 2. 同一会话内窗口标题变化（如未读标记）会误拒绝替换，偏安全，待实测观察。
 3. 中文 IME、长文、频道和线程（S3）未测。
-4. v0.1.0 以预览版公开发布（GitHub mfang0126/be-nice）。
+4. 同一会话名重名无法区分（已知限制）。
+
+## 发布
+
+- v0.1.0 预览版已公开：https://github.com/mfang0126/be-nice/releases/tag/v0.1.0 （PR #1 合并为 main `361804c`，zip SHA-256 `69e3e112…4a30`，仅 arm64，仅在 macOS 26 测过，无 Developer ID）。
+- PR #2（main `da4a034`）：项目 `.claude/settings.json` 增加 SessionStart(compact) hook，压缩后自动注入本文件、`git status --short` 与最近 5 次提交。
+- 工作分支 `mfang0126/be-nice-m0-axprobe` 继续开发，合并走 PR。
 
 ## 代码现状
 
