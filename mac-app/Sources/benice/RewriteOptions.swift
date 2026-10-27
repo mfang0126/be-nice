@@ -35,22 +35,55 @@ public struct RewriteStyle: Codable, Equatable, Sendable {
 /// The three style slots shown as cards, in order; slot 1 is selected by default.
 enum StyleSlots {
     static let key = "be-nice.styleSlots"
+    /// Set by Save: the user chose these slots, so the old default trio is theirs to keep.
+    static let editedKey = "be-nice.styleSlotsEdited"
 
     static func load(_ defaults: UserDefaults = .standard) -> [RewriteStyle] {
         guard let data = defaults.data(forKey: key),
               let slots = try? JSONDecoder().decode([RewriteStyle].self, from: data),
-              slots.count == 3, slots.allSatisfy(isValid) else { return RewriteStyle.defaultSlots }
+              slots.count == 3, slots.allSatisfy(isValid), hasDistinctNames(slots) else { return RewriteStyle.defaultSlots }
         let upgraded = slots.map { slot in
             RewriteStyle.presets.first { $0.name == slot.name && RewriteStyle.retiredInstructions[slot.name] == slot.instruction }
                 ?? slot
         }
-        return upgraded.map(\.name) == RewriteStyle.previousDefaultNames ? RewriteStyle.defaultSlots : upgraded
+        let untouched = !defaults.bool(forKey: editedKey)
+        return untouched && upgraded.map(\.name) == RewriteStyle.previousDefaultNames ? RewriteStyle.defaultSlots : upgraded
     }
 
     static func save(_ slots: [RewriteStyle], _ defaults: UserDefaults = .standard) {
-        guard slots.count == 3, slots.allSatisfy(isValid),
+        guard slots.count == 3, slots.allSatisfy(isValid), hasDistinctNames(slots),
               let data = try? JSONEncoder().encode(slots) else { return }
         defaults.set(data, forKey: key)
+        defaults.set(true, forKey: editedKey)
+    }
+
+    /// Cards are labelled by name, so two slots must not share one (case-insensitive).
+    static func hasDistinctNames(_ slots: [RewriteStyle]) -> Bool {
+        Set(slots.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }).count == slots.count
+    }
+
+    /// The three rows typed in Settings as slots, or the first problem in plain words.
+    static func slots(names: [String], instructions: [String]) -> Result<[RewriteStyle], StyleSlotError> {
+        guard names.count == 3, instructions.count == 3 else { return .failure(.init(message: "Fill in all three styles.")) }
+        var result: [RewriteStyle] = []
+        for row in 0..<3 {
+            let number = row + 1
+            let name = names[row].trimmingCharacters(in: .whitespacesAndNewlines)
+            let instruction = instructions[row].trimmingCharacters(in: .whitespacesAndNewlines)
+            if name.isEmpty || name.count > 40 {
+                return .failure(.init(message: "Style \(number) needs a name (up to 40 characters)."))
+            }
+            if instruction.isEmpty || instruction.count > RewriteStyle.maxInstructionLength {
+                return .failure(.init(message: "Style \(number) needs one line of instruction (up to \(RewriteStyle.maxInstructionLength) characters)."))
+            }
+            let style = RewriteStyle(name: name, instruction: instruction)
+            guard isValid(style) else {
+                return .failure(.init(message: "Style \(number) can't contain “<” tags or line breaks."))
+            }
+            result.append(style)
+        }
+        guard hasDistinctNames(result) else { return .failure(.init(message: "Give each style a different name.")) }
+        return .success(result)
     }
 
     static func isValid(_ style: RewriteStyle) -> Bool {
@@ -62,8 +95,11 @@ enum StyleSlots {
         return !name.isEmpty && name.count <= 40
             && !instruction.isEmpty && instruction.count <= RewriteStyle.maxInstructionLength
             && plain(name) && plain(instruction)
+            && !ModelClient.containsStylesDelimiter(name + instruction)
     }
 }
+
+struct StyleSlotError: Error, Equatable { let message: String }
 
 public struct RewriteOption: Equatable, Sendable {
     public let style: RewriteStyle

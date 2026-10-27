@@ -228,7 +228,7 @@ private enum TestResult: Sendable {
 
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
-    private static let contentWidth: CGFloat = 480
+    private static let contentWidth: CGFloat = 560
 
     private let store: SettingsStore
     private let network: SettingsNetwork
@@ -266,11 +266,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return grid
     }()
 
-    private let slotPopups = [NSPopUpButton(), NSPopUpButton(), NSPopUpButton()]
-    /// Items of each slot popup, in menu order.
-    private var slotChoices: [[RewriteStyle]] = [[], [], []]
-    /// The popup row each slot last settled on, to go back to when the sheet is cancelled.
-    private var lastPick = [0, 0, 0]
+    private let styleNameFields = (0..<3).map { _ in NSTextField() }
+    private let styleInstructionFields = (0..<3).map { _ in NSTextField() }
+    /// Pull-down per row: picking a preset fills that row's two fields, nothing more.
+    private let presetMenus = (0..<3).map { _ in NSPopUpButton(frame: .zero, pullsDown: true) }
+    private let restoreButton = NSButton(title: "Restore defaults", target: nil, action: nil)
 
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
 
@@ -358,26 +358,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Pure helpers
 
-    /// The three picks as slots, or nil when any pick is not a valid style.
-    static func slotsFromSelection(_ picks: [RewriteStyle]) -> [RewriteStyle]? {
-        picks.count == 3 && picks.allSatisfy(StyleSlots.isValid) ? picks : nil
-    }
-
-    /// A style written in the settings window, or nil when the name or the instruction is empty.
-    static func customStyle(name: String, instruction: String) -> RewriteStyle? {
-        let name = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
-        let instruction = String(instruction.trimmingCharacters(in: .whitespacesAndNewlines)
-            .prefix(RewriteStyle.maxInstructionLength))
-        let style = RewriteStyle(name: name, instruction: instruction)
-        // The model client refuses styles that could close its prompt tags, so refuse them here too.
-        return StyleSlots.isValid(style) && !ModelClient.containsStylesDelimiter(name + instruction) ? style : nil
-    }
-
-    /// Menu content for one slot: every preset, plus the stored style when it is not a preset.
-    static func slotChoices(for stored: RewriteStyle) -> [RewriteStyle] {
-        RewriteStyle.presets + (RewriteStyle.presets.contains(stored) ? [] : [stored])
-    }
-
     // MARK: Layout
 
     private func buildContent(in window: NSWindow) {
@@ -404,16 +384,37 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let stylesHeader = NSTextField(labelWithString: "Your three styles")
         stylesHeader.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
         let slotNames = ["1 (default)", "2", "3"]
-        let stylesGrid = NSGridView(views: zip(slotNames, slotPopups).map { name, popup in
-            popup.setAccessibilityLabel("Style \(name)")
-            popup.widthAnchor.constraint(equalToConstant: 200).isActive = true
-            return [fieldLabel(name), popup]
+        let presetItems = RewriteStyle.presets
+        for row in 0..<3 {
+            let name = styleNameFields[row], instruction = styleInstructionFields[row], presets = presetMenus[row]
+            name.placeholderString = "Name"
+            name.setAccessibilityLabel("Style \(slotNames[row]) name")
+            name.widthAnchor.constraint(equalToConstant: 120).isActive = true
+            instruction.placeholderString = "How to write, e.g. Warm, under 2 sentences"
+            instruction.setAccessibilityLabel("Style \(slotNames[row]) instruction")
+            instruction.widthAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true
+            presets.setAccessibilityLabel("Style \(slotNames[row]) presets")
+            presets.addItem(withTitle: "Presets")
+            for (index, preset) in presetItems.enumerated() {
+                let item = NSMenuItem(title: preset.name, action: #selector(presetPicked(_:)), keyEquivalent: "")
+                item.target = self
+                item.tag = index
+                item.representedObject = row
+                presets.menu?.addItem(item)
+            }
+            presets.widthAnchor.constraint(equalToConstant: 96).isActive = true
+        }
+        let stylesGrid = NSGridView(views: (0..<3).map { row in
+            [fieldLabel(slotNames[row]), styleNameFields[row], styleInstructionFields[row], presetMenus[row]]
         })
         stylesGrid.rowSpacing = 6
-        stylesGrid.columnSpacing = 10
+        stylesGrid.columnSpacing = 8
         stylesGrid.column(at: 0).xPlacement = .leading
-        stylesGrid.column(at: 0).width = 90
-        stylesGrid.setContentHuggingPriority(.required, for: .horizontal)
+        stylesGrid.column(at: 0).width = 80
+        restoreButton.target = self
+        restoreButton.action = #selector(restoreDefaults)
+        restoreButton.bezelStyle = .rounded
+        restoreButton.setAccessibilityLabel("Restore defaults")
 
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         statusLabel.textColor = .secondaryLabelColor
@@ -429,7 +430,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         buttons.insertArrangedSubview(pushRight, at: 0)  // Close, Test and Save sit at the right, Save last
 
         let stack = NSStackView(views: [
-            providerControl, copilotPane, customPane, stylesHeader, stylesGrid, statusLabel, buttons,
+            providerControl, copilotPane, customPane, stylesHeader, stylesGrid, restoreButton, statusLabel, buttons,
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -452,7 +453,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         apiKeyField.delegate = self
         window.initialFirstResponder = providerControl
         let order: [NSView] = [providerControl, copilotModelPopup, baseURLField, modelField, apiKeyField]
-            + slotPopups + [closeButton, testButton, saveButton]
+            + (0..<3).flatMap { [styleNameFields[$0], styleInstructionFields[$0], presetMenus[$0]] }
+            + [restoreButton, closeButton, testButton, saveButton]
         for (view, next) in zip(order, order.dropFirst() + [order[0]]) { view.nextKeyView = next }
     }
 
@@ -546,100 +548,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Style slots
 
     private func loadSlots() {
-        for (index, style) in store.loadSlots().enumerated() {
-            showSlotMenu(index, choices: Self.slotChoices(for: style), selected: style)
+        fill(store.loadSlots())
+    }
+
+    private func fill(_ slots: [RewriteStyle]) {
+        for (row, style) in slots.enumerated() {
+            styleNameFields[row].stringValue = style.name
+            styleInstructionFields[row].stringValue = style.instruction
         }
     }
 
-    /// Fills one slot popup with its styles, a separator and "Write your own…".
-    private func showSlotMenu(_ index: Int, choices: [RewriteStyle], selected: RewriteStyle) {
-        slotChoices[index] = choices
-        let popup = slotPopups[index]
-        popup.menu?.removeAllItems()
-        for choice in choices {
-            let item = NSMenuItem(title: choice.name, action: #selector(slotPicked(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = index
-            popup.menu?.addItem(item)
-        }
-        popup.menu?.addItem(.separator())
-        let own = NSMenuItem(title: "Write your own…", action: #selector(slotPicked(_:)), keyEquivalent: "")
-        own.target = self
-        own.tag = index
-        own.identifier = Self.writeOwnID
-        popup.menu?.addItem(own)
-        if let custom = choices.first(where: { !RewriteStyle.presets.contains($0) }) {
-            let delete = NSMenuItem(title: "Delete “\(custom.name)”", action: #selector(slotPicked(_:)), keyEquivalent: "")
-            delete.target = self
-            delete.tag = index
-            delete.identifier = Self.deleteOwnID
-            popup.menu?.addItem(delete)
-        }
-        let at = choices.firstIndex(of: selected) ?? 0
-        popup.selectItem(at: at)
-        lastPick[index] = at
+    @objc private func presetPicked(_ item: NSMenuItem) {
+        guard let row = item.representedObject as? Int, RewriteStyle.presets.indices.contains(item.tag),
+              (0..<3).contains(row) else { return }
+        let preset = RewriteStyle.presets[item.tag]
+        styleNameFields[row].stringValue = preset.name
+        styleInstructionFields[row].stringValue = preset.instruction
     }
 
-    private static let writeOwnID = NSUserInterfaceItemIdentifier("writeOwn")
-    private static let deleteOwnID = NSUserInterfaceItemIdentifier("deleteOwn")
-
-    @objc private func slotPicked(_ item: NSMenuItem) {
-        let index = item.tag
-        if item.identifier == Self.deleteOwnID { return removeCustomStyle(index) }
-        guard item.identifier == Self.writeOwnID else {
-            lastPick[index] = slotPopups[index].indexOfSelectedItem
-            return
-        }
-        // Show the previous pick again until the sheet returns a valid style.
-        slotPopups[index].selectItem(at: lastPick[index])
-        let current = slotChoices[index].indices.contains(lastPick[index]) ? slotChoices[index][lastPick[index]] : nil
-        let prefill = current.flatMap { RewriteStyle.presets.contains($0) ? nil : $0 }
-        let alert = NSAlert()
-        alert.messageText = "Write your own style"
-        alert.informativeText = "A short name, and one line telling the model how to write."
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
-        let name = NSTextField(frame: NSRect(x: 0, y: 30, width: 320, height: 24))
-        name.placeholderString = "Name, e.g. Polite English"
-        name.stringValue = prefill?.name ?? ""
-        name.setAccessibilityLabel("Style name")
-        let instruction = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
-        instruction.placeholderString = "e.g. Polite, under 2 sentences"
-        instruction.stringValue = prefill?.instruction ?? ""
-        instruction.setAccessibilityLabel("Style instruction")
-        let box = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 54))
-        box.addSubview(name)
-        box.addSubview(instruction)
-        alert.accessoryView = box
-        alert.window.initialFirstResponder = name
-        guard let window else { return }
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
-            self?.addCustomStyle(index, name: name.stringValue, instruction: instruction.stringValue)
-        }
-    }
-
-    /// Drops the slot's written style and shows that slot's default preset again.
-    func removeCustomStyle(_ index: Int) {
-        guard RewriteStyle.defaultSlots.indices.contains(index) else { return }
-        let fallback = RewriteStyle.defaultSlots[index]
-        showSlotMenu(index, choices: RewriteStyle.presets, selected: fallback)
-    }
-
-    /// Puts a written style into the slot, replacing an earlier custom one.
-    func addCustomStyle(_ index: Int, name: String, instruction: String) {
-        guard let style = Self.customStyle(name: name, instruction: instruction) else {
-            show("Give the style a name and one line of instruction.", isError: true)
-            return
-        }
-        showSlotMenu(index, choices: Self.slotChoices(for: style), selected: style)
-    }
-
-    private func pickedSlots() -> [RewriteStyle] {
-        slotPopups.enumerated().compactMap { index, popup in
-            slotChoices[index].indices.contains(popup.indexOfSelectedItem)
-                ? slotChoices[index][popup.indexOfSelectedItem] : nil
-        }
+    @objc private func restoreDefaults() {
+        fill(RewriteStyle.defaultSlots)
+        show("Defaults restored. Save to keep them.", isError: false)
     }
 
     // MARK: Load / save
@@ -717,7 +646,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         baseURLField.isEnabled = !busy
         modelField.isEnabled = !busy
         apiKeyField.isEnabled = !busy
-        slotPopups.forEach { $0.isEnabled = !busy }
+        for row in 0..<3 {
+            styleNameFields[row].isEnabled = !busy
+            styleInstructionFields[row].isEnabled = !busy
+            presetMenus[row].isEnabled = !busy
+        }
+        restoreButton.isEnabled = !busy
         copilotModelPopup.isEnabled = !busy && copilotModelPopup.numberOfItems > 0
         updateButtonState()
     }
@@ -775,11 +709,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func currentSlots() -> [RewriteStyle]? {
-        guard let slots = Self.slotsFromSelection(pickedSlots()) else {
-            show("Pick a valid style for each of the three slots.", isError: true)
+        switch StyleSlots.slots(names: styleNameFields.map(\.stringValue),
+                                instructions: styleInstructionFields.map(\.stringValue)) {
+        case .success(let slots): return slots
+        case .failure(let problem):
+            show(problem.message, isError: true)
             return nil
         }
-        return slots
     }
 
     @objc private func saveSettings() {

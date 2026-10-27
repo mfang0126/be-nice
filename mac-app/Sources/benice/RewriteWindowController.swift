@@ -505,22 +505,27 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         return false
     }
 
+    /// The user's three styles first, then the presets they have not used; names are unique.
+    static func styleChoices(slots: [RewriteStyle]) -> (yours: [RewriteStyle], others: [RewriteStyle]) {
+        let names = Set(slots.map { $0.name.lowercased() })
+        return (slots, RewriteStyle.presets.filter { !names.contains($0.name.lowercased()) })
+    }
+
     private func styleMenu(for index: Int) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        for preset in RewriteStyle.presets {
-            let item = NSMenuItem(title: preset.name, action: #selector(pickStyle(_:)), keyEquivalent: "")
+        let choices = Self.styleChoices(slots: StyleSlots.load())
+        func add(_ style: RewriteStyle) {
+            let item = NSMenuItem(title: style.name, action: #selector(pickStyle(_:)), keyEquivalent: "")
             item.target = self
             item.tag = index
-            item.representedObject = preset
-            item.state = options[index].style == preset ? .on : .off
+            item.representedObject = style
+            item.state = options[index].style == style ? .on : .off
             menu.addItem(item)
         }
-        menu.addItem(.separator())
-        let custom = NSMenuItem(title: "Describe your own…", action: #selector(describeOwn(_:)), keyEquivalent: "")
-        custom.target = self
-        custom.tag = index
-        menu.addItem(custom)
+        choices.yours.forEach(add)
+        if !choices.others.isEmpty { menu.addItem(.separator()) }
+        choices.others.forEach(add)
         return menu
     }
 
@@ -533,28 +538,6 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         guard active, !busy, regenerating == nil, options.indices.contains(index),
               options[index].style != style else { return }
         onRestyle?(index, style)
-    }
-
-    @objc private func describeOwn(_ item: NSMenuItem) {
-        let index = item.tag
-        guard presentsWindows, let window else { return }
-        let alert = NSAlert()
-        alert.messageText = "Describe your own style"
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
-        field.placeholderString = "e.g. Polite English, under 2 sentences"
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
-        alert.beginSheetModal(for: window) { [weak self] response in
-            if response == .alertFirstButtonReturn { self?.restyleCustom(index, field.stringValue) }
-        }
-    }
-
-    func restyleCustom(_ index: Int, _ text: String) {
-        let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !line.isEmpty else { return }
-        restyle(index, RewriteStyle(name: "Custom", instruction: String(line.prefix(RewriteStyle.maxInstructionLength))))
     }
 
     /// Return in the tweak field submits unless the input method is composing.

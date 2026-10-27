@@ -236,19 +236,20 @@ struct RewriteWindowTests {
         }
         func choose(_ item: NSMenuItem) { _ = NSApp.sendAction(item.action!, to: item.target, from: item) }
         let menu = styleButton(1).menu!
-        expect(menu.items.map(\.title) == presets.map(\.name) + ["", "Describe your own…"], "menu lists presets, separator, custom")
-        expect(menu.items[1].state == .on && menu.items[0].state == .off, "current style is checked")
+        expect(menu.items.map(\.title) == ["Polite", "Shorter", "Friendly", "", "Direct", "Clear", "Formal", "Polished English"],
+               "menu lists the user's three styles, a separator, then the other presets")
+        expect(!menu.items.map(\.title).contains("Describe your own…"), "no one-off custom entry")
+        expect(menu.items[2].state == .on && menu.items[0].state == .off, "current style is checked")
+        let split = RewriteWindowController.styleChoices(slots: [RewriteStyle(name: "direct", instruction: "x"),
+                                                                 RewriteStyle(name: "Mine", instruction: "y"), presets[2]])
+        expect(split.yours.count == 3 && !split.others.contains { $0.name == "Direct" || $0.name == "Clear" },
+               "presets already used (any case) are not listed twice")
         expect(styleButton(1).attributedTitle.string == "Friendly ▾", "title is a pull-down button")
         expect(!tweakField().isHidden && tweakField().placeholderString == "Change Direct: e.g. more polite, shorter", "tweak field visible and names the selected card")
-        choose(menu.items[1])
+        choose(menu.items[2])
         expect(restyles.isEmpty, "current style does nothing")
-        choose(menu.items[4])
+        choose(menu.items[6])
         expect(restyles.count == 1 && restyles[0].0 == 1 && restyles[0].1 == presets[4], "preset calls onRestyle with card index")
-        controller.restyleCustom(2, "  \(String(repeating: "x", count: 300))  ")
-        expect(restyles.count == 2 && restyles[1].0 == 2 && restyles[1].1.name == "Custom"
-               && restyles[1].1.instruction.count == RewriteStyle.maxInstructionLength, "custom style trimmed and truncated")
-        controller.restyleCustom(2, "   ")
-        expect(restyles.count == 2, "blank custom style ignored")
         // Tweak
         let plain = NSTextView()
         let enter = #selector(NSResponder.insertNewline(_:))
@@ -279,8 +280,8 @@ struct RewriteWindowTests {
                "regenerating disables primary, menus and tweak field")
         expect(button("cancel").isEnabled, "Cancel stays enabled while regenerating")
         key(36, "\r", modifiers: .command)
-        controller.restyleCustom(0, "ignored")
-        expect(submissions.count == 1 && restyles.count == 2, "no submit or restyle while regenerating")
+        choose(menu.items[0])
+        expect(submissions.count == 1 && restyles.count == 1, "no submit or restyle while regenerating")
         controller.setRegenerating(nil)
         expect(editor().string == "Edited second" && editor().isEditable && button("primary").isEnabled && tweakField().isEnabled,
                "setRegenerating(nil) restores text and controls")
@@ -288,7 +289,7 @@ struct RewriteWindowTests {
         controller.updateOption(1, RewriteOption(style: presets[3], text: "Shorter text"))
         expect(editor().string == "Shorter text" && editor().isEditable, "updateOption swaps text and ends regenerating")
         expect(card(1).isAccessibilitySelected(), "updateOption keeps selection")
-        expect(styleButton(1).attributedTitle.string == "Shorter ▾" && styleButton(1).menu!.items[3].state == .on, "updateOption swaps style name and checkmark")
+        expect(styleButton(1).attributedTitle.string == "Shorter ▾" && styleButton(1).menu!.items[1].state == .on, "updateOption swaps style name and checkmark")
         expect(button("primary").title == "Replace with Shorter" && button("primary").isEnabled, "primary follows new style")
         controller.dismiss()
         if failures == 0 { print("RewriteWindowTests PASS"); exit(0) }

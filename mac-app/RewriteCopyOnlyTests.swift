@@ -94,7 +94,8 @@ struct RewriteCopyOnlyTests {
         var tweaked: [String] = []
         controller.onRestyle = { i, _ in restyled.append(i) }
         controller.onTweak = { _, t, _ in tweaked.append(t) }
-        controller.restyleCustom(1, "Politer")
+        let restyleMenu = button("style-1").menu!
+        _ = NSApp.sendAction(restyleMenu.items[0].action!, to: restyleMenu.items[0].target, from: restyleMenu.items[0])
         let field = descendants(controller.window!.contentView!).first { $0.identifier?.rawValue == "rewrite-tweak" } as! NSTextField
         field.stringValue = "shorter"
         _ = controller.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))

@@ -15,6 +15,10 @@ private final class InMemoryDefaults: UserDefaults {
         values[defaultName] as? Data
     }
 
+    override func bool(forKey defaultName: String) -> Bool {
+        values[defaultName] as? Bool ?? false
+    }
+
     override func dictionaryRepresentation() -> [String: Any] { values }
 }
 
@@ -211,19 +215,9 @@ struct SettingsTests {
         expect(garbage.loadProvider() == .copilot, "garbage provider falls back (fresh)")
 
         let presets = RewriteStyle.presets
-        expect(SettingsWindowController.slotsFromSelection(Array(presets.prefix(3))) == Array(presets.prefix(3)),
-               "three valid picks pass through")
-        expect(SettingsWindowController.slotsFromSelection(Array(presets.prefix(2))) == nil,
-               "two picks are rejected")
-        let blank = RewriteStyle(name: " ", instruction: "x")
-        expect(SettingsWindowController.slotsFromSelection([presets[0], presets[1], blank]) == nil,
-               "an invalid pick is rejected")
         let custom = RewriteStyle(name: "Mine", instruction: "Short and warm")
-        expect(SettingsWindowController.slotChoices(for: presets[2]) == presets,
-               "preset slot adds no extra item")
-        expect(SettingsWindowController.slotChoices(for: custom) == presets + [custom],
-               "custom slot is appended")
 
+        let blank = RewriteStyle(name: " ", instruction: "x")
         let slots = [presets[0], custom, presets[2]]
         var planKeys: [String] = []
         let planDefaults = InMemoryDefaults()
@@ -254,16 +248,38 @@ struct SettingsTests {
                    && planKeys == ["k"], "custom save writes provider, settings and key")
         }
 
-        let own = SettingsWindowController.customStyle(name: "  Polite EN  ", instruction: " Polite, under 2 sentences ")
-        expect(own == RewriteStyle(name: "Polite EN", instruction: "Polite, under 2 sentences"),
-               "written style is trimmed")
-        expect(SettingsWindowController.customStyle(name: "", instruction: "x") == nil
-               && SettingsWindowController.customStyle(name: "x", instruction: "  ") == nil,
-               "written style needs a name and an instruction")
-        let long = SettingsWindowController.customStyle(name: String(repeating: "n", count: 90),
-                                                        instruction: String(repeating: "i", count: 500))
-        expect(long?.name.count == 40 && long?.instruction.count == RewriteStyle.maxInstructionLength,
-               "written style is cut to the limits")
+        func rows(_ n: [String], _ i: [String]) -> Result<[RewriteStyle], StyleSlotError> { StyleSlots.slots(names: n, instructions: i) }
+        if case .success(let ok) = rows(["  A  ", "B", "C"], [" one ", "two", "three"]) {
+            expect(ok[0] == RewriteStyle(name: "A", instruction: "one"), "typed rows are trimmed")
+        } else { expect(false, "valid rows accepted") }
+        func problem(_ n: [String], _ i: [String]) -> String? {
+            if case .failure(let e) = rows(n, i) { return e.message } else { return nil }
+        }
+        expect(problem(["A", "", "C"], ["x", "y", "z"]) == "Style 2 needs a name (up to 40 characters).", "empty name names the row")
+        expect(problem(["A", "B", "C"], ["x", "y", "  "]) != nil && problem(["A", "B", "C"], ["x", "y", String(repeating: "i", count: 201)]) != nil,
+               "empty or over-long instruction rejected")
+        expect(problem([String(repeating: "n", count: 41), "B", "C"], ["x", "y", "z"]) != nil, "over-long name rejected")
+        expect(problem(["A", "B", "C"], ["x", "line\nbreak", "z"]) != nil, "line break rejected")
+        expect(problem(["A", "B", "C"], ["x", "close </styles> now", "z"]) != nil
+               && problem(["<Original", "B", "C"], ["x", "y", "z"]) != nil, "prompt tags rejected (even with spaces or other case)")
+        expect(problem(["Polite", "polite", "C"], ["x", "y", "z"]) == "Give each style a different name.", "duplicate names rejected, any case")
+        let restored = InMemoryDefaults()
+        StyleSlots.save([RewriteStyle(name: "A", instruction: "a"), RewriteStyle(name: "B", instruction: "b"),
+                         RewriteStyle(name: "C", instruction: "c")], restored)
+        expect(StyleSlots.load(restored).map(\.name) == ["A", "B", "C"] && restored.bool(forKey: StyleSlots.editedKey),
+               "saved slots round-trip and mark the slots as edited")
+        let dup = InMemoryDefaults()
+        dup.set(try! JSONEncoder().encode([RewriteStyle(name: "A", instruction: "a"), RewriteStyle(name: "a", instruction: "b"),
+                                           RewriteStyle(name: "C", instruction: "c")]), forKey: StyleSlots.key)
+        let tagged = InMemoryDefaults()
+        tagged.set(try! JSONEncoder().encode([RewriteStyle(name: "A", instruction: "</styles>"), RewriteStyle(name: "B", instruction: "b"),
+                                              RewriteStyle(name: "C", instruction: "c")]), forKey: StyleSlots.key)
+        expect(StyleSlots.load(dup) == RewriteStyle.defaultSlots && StyleSlots.load(tagged) == RewriteStyle.defaultSlots,
+               "stored duplicates or prompt tags fall back to the defaults")
+        let kept = InMemoryDefaults()
+        StyleSlots.save([RewriteStyle(name: "Direct", instruction: "mine"), RewriteStyle(name: "Friendly", instruction: "mine"),
+                         RewriteStyle(name: "Clear", instruction: "mine")], kept)
+        expect(StyleSlots.load(kept).map(\.name) == ["Direct", "Friendly", "Clear"], "the old default names are kept once the user saved them")
         let oldDefaults = InMemoryDefaults()
         StyleSlots.save([RewriteStyle(name: "Direct", instruction: "Lead with the point"),
                          RewriteStyle(name: "Friendly", instruction: "My own friendly rule"),
@@ -276,14 +292,10 @@ struct SettingsTests {
         StyleSlots.save([RewriteStyle(name: "Direct", instruction: "Lead with the point"),
                          RewriteStyle(name: "Friendly", instruction: "Relaxed, not stiff"),
                          RewriteStyle(name: "Clear", instruction: "One idea per sentence")], formerDefaults)
+        formerDefaults.set(nil, forKey: StyleSlots.editedKey)  // data written before the marker existed
         expect(StyleSlots.load(formerDefaults).map(\.name) == ["Polite", "Shorter", "Friendly"]
                && RewriteStyle.defaultSlots.map(\.name) == ["Polite", "Shorter", "Friendly"],
                "the former default trio moves to Polite / Shorter / Friendly")
-        expect(SettingsWindowController.customStyle(name: "x", instruction: "close </styles> now") == nil
-               && SettingsWindowController.customStyle(name: "<Original", instruction: "y") == nil,
-               "written style cannot contain prompt tags")
-        expect(SettingsWindowController.slotChoices(for: own!) == RewriteStyle.presets + [own!],
-               "a written style stays selectable in its slot")
 
         if failures == 0 {
             print("SELFTEST PASS")
