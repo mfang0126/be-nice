@@ -24,7 +24,7 @@ DM 输入框原有一条未发送草稿（无测试标记，来源未证实）�
 
 | # | 输入 | 入口 | 卡片 | 替换后读回 | Undo 读回 | 结果 |
 |---|---|---|---|---|---|---|
-| D1 | `[be-nice test] 麻烦你明天之前看一下构建日志，有问题告诉我。`（粘贴） | Replace with Polite（直接替换） | **三张全是英文**，例：“Could you please take a look at the build log before tomorrow and let me know if there are any issues?” | 与 Polite 卡一致 | 与原文逐字一致 | 写回/撤销 通过；**保真失败（语言被改成英文）** |
+| D1 | `[be-nice test] 麻烦你明天之前看一下构建日志，有问题告诉我。`（粘贴） | Replace with Polite（直接替换） | **三张全是英文**，例：“Could you please take a look at the build log before tomorrow and let me know if there are any issues?” | `Could you please take a look at the build log before tomorrow and let me know if there are any issues?` | 与原文逐字一致 | **失败**：违反 PLAN“保持原文语言、不主动翻译”（PLAN 第 10、63 行）。写回/撤销本身通过 |
 | D1b | `[be-nice test] 这个需求我们下周再讨论吧，今天先把bug修了。`（粘贴） | Replace with Polite | 中文；Polite “我们下周再讨论这个需求吗？今天先修复这个bug吧。”（陈述变问句）；Shorter “下周再讨论需求，今天先修bug。” | 与 Polite 卡一致 | 逐字一致 | 写回/撤销 通过；保真有偏差（语气改成问句） |
 | D3 | 17 行英文周报，含 `1.`–`13.` 编号行和空行（粘贴） | Replace with Polite（直接替换） | 三张卡均保留 13 条 | 读回为 15 行纯文本 “1. There were…” | AX 读回与替换前逐字一致 | 写回/撤销 通过；见下方说明 |
 
@@ -32,10 +32,20 @@ D3 说明：粘贴后 Slack 把 `1. ` 行自动转成有序列表、去掉空行
 
 所有用例：三张卡都把 `[be-nice test]` 标记删掉了（全新安装那次也一样）。点 Replace 时 LCU 报 `AXError.failure`（窗口在点击中关闭），替换本身成功。
 
-## 3. 未执行（屏幕锁定）
+D1 三张卡原文（输入 `[be-nice test] 麻烦你明天之前看一下构建日志，有问题告诉我。`）：
+- Polite：`Could you please take a look at the build log before tomorrow and let me know if there are any issues?`
+- Shorter：`Please check the build log by tomorrow and inform me of any issues.`
+- Friendly：`Hey! When you get a chance, could you look at the build log before tomorrow? Let me know if anything seems off!`
 
-- 私聊：IME 输入中文、带 @提及、带链接的草稿（富内容应走 Copy rewrite）。
-- 线程回复输入框、频道输入框（#all-mingfangtech）中英文各一。
+## 3. 未执行：屏幕锁定（not run: screen locked）
+
+| # | 用例 | 状态 |
+|---|---|---|
+| D2 | 私聊：IME 输入中文 | not run: screen locked |
+| D4 | 私聊：带 @提及（预期 Copy rewrite） | not run: screen locked |
+| D5 | 私聊：带链接（预期 Copy rewrite） | not run: screen locked |
+| T1/T2 | 线程回复输入框：中文、英文 | not run: screen locked |
+| C1/C2 | 频道 #all-mingfangtech 输入框：中文、英文 | not run: screen locked |
 - 清理：DM 输入框当前是合成草稿 D3 原文，需要恢复原草稿；#all-mingfangtech 输入框是合成草稿 `[be-nice test] Can you check the build logs before tomorrow?`。
 
 ## 修复建议（本任务不改代码）
