@@ -10,15 +10,16 @@ A macOS menu-bar app for the Slack desktop app. You write a draft as usual; Be N
 
 ## Status
 
-Early preview (v0.1.0).
+Early preview (v0.2.0).
 
-- Verified: Slack direct messages, plain-text drafts.
-- Not yet verified or limited: channels and threads, drafts with rich content (emoji images, attachments, formatting — in that case you can only copy the result), non-English input methods, very long drafts.
+- Verified in real Slack: channels, threads and direct messages with plain-text drafts, including Chinese drafts.
+- Drafts with rich content (links, mentions, lists, formatting, emoji) are copy-only: Be Nice never replaces them, and you can only copy the result. Paragraph layout (single lines, Shift+Return lines, paragraphs separated by one blank line) is kept on Replace and Undo; if the layout can't be read safely, Be Nice offers copy only.
+- Slack only: other apps are not supported. Real Chinese IME composition, emoji, and same-name conversations are not yet verified.
 - If Be Nice can't safely confirm the target message box, it refuses to replace and offers copy only.
 
 ## Install
 
-1. Download `BeNice-0.1.0-macos.zip` from [Releases](https://github.com/mfang0126/be-nice/releases).
+1. Download `BeNice-0.2.0-macos.zip` from [Releases](https://github.com/mfang0126/be-nice/releases).
 2. Unzip, move **Be Nice.app** to `/Applications`.
 3. The app isn't notarized (no Apple Developer ID). The first time, **right-click → Open** and confirm.
 4. Grant **Accessibility** access in System Settings → Privacy & Security when asked. It is needed to read and replace the text in Slack's message box.
