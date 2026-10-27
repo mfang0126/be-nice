@@ -192,7 +192,8 @@ struct SettingsTests {
         // MARK: Providers, Copilot model, style slots
 
         let fresh = SettingsStore(defaults: InMemoryDefaults(), hasKey: { false }, saveKey: { _ in })
-        expect(fresh.loadProvider() == .copilot, "fresh install defaults to Copilot")
+        expect(fresh.savedProvider() == nil, "fresh install has chosen no provider, so nothing may be sent")
+        expect(fresh.loadProvider() == .copilot, "Settings still preselects Copilot on a fresh install")
         expect(fresh.loadCopilotModel() == "gpt-4o-mini", "fresh Copilot model is gpt-4o-mini")
         fresh.saveCopilotModel("  gpt-4.1 \n")
         expect(fresh.loadCopilotModel() == "gpt-4.1", "saved Copilot model is trimmed")
@@ -204,7 +205,7 @@ struct SettingsTests {
         let legacyDefaults = InMemoryDefaults()
         legacyDefaults.set("https://api.example.com", forKey: SettingsStore.baseURLKey)
         let legacy = SettingsStore(defaults: legacyDefaults, hasKey: { false }, saveKey: { _ in })
-        expect(legacy.loadProvider() == .custom, "saved base URL without provider means custom")
+        expect(legacy.loadProvider() == .custom && legacy.savedProvider() == .custom, "saved base URL without provider means custom")
         legacy.saveProvider(.copilot)
         expect(legacy.loadProvider() == .copilot, "saved provider beats saved base URL")
         legacyDefaults.set("bogus", forKey: SettingsStore.providerKey)
@@ -212,7 +213,9 @@ struct SettingsTests {
         let garbageDefaults = InMemoryDefaults()
         garbageDefaults.set("bogus", forKey: SettingsStore.providerKey)
         let garbage = SettingsStore(defaults: garbageDefaults, hasKey: { false }, saveKey: { _ in })
-        expect(garbage.loadProvider() == .copilot, "garbage provider falls back (fresh)")
+        expect(garbage.loadProvider() == .copilot && garbage.savedProvider() == nil, "garbage provider falls back (fresh): nothing chosen")
+        garbage.saveProvider(.copilot)
+        expect(garbage.savedProvider() == .copilot, "saving makes the choice explicit")
 
         let presets = RewriteStyle.presets
         let custom = RewriteStyle(name: "Mine", instruction: "Short and warm")

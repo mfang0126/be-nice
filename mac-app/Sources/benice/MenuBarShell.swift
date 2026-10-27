@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         setupMenu()
         let optimizer = OptimizerController()
         optimizerController = optimizer
+        optimizer.onNeedsSetup = { [weak self] in self?.openModelSettings() }
         let triggers = TriggerController { [weak self] target in
             self?.optimizerController?.trigger(target)
         }

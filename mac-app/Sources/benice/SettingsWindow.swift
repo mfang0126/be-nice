@@ -105,13 +105,16 @@ struct SettingsStore: @unchecked Sendable {
     }
 
     /// The saved choice; else `.custom` for installs that already saved a base URL (they were
-    /// configured before providers existed), else `.copilot`.
-    func loadProvider() -> Provider {
+    /// configured before providers existed); else nil: nothing is chosen, so nothing may be sent.
+    func savedProvider() -> Provider? {
         if let raw = defaults.string(forKey: Self.providerKey), let saved = Provider(rawValue: raw) {
             return saved
         }
-        return load().baseURL.isEmpty ? .copilot : .custom
+        return load().baseURL.isEmpty ? nil : .custom
     }
+
+    /// What the Settings window preselects: the saved choice, else Copilot (nothing is saved until Save).
+    func loadProvider() -> Provider { savedProvider() ?? .copilot }
 
     func saveProvider(_ provider: Provider) {
         defaults.set(provider.rawValue, forKey: Self.providerKey)
@@ -580,7 +583,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         // The stored secret is never read into the field or shown.
         apiKeyField.stringValue = ""
         statusLabel.textColor = .secondaryLabelColor
-        statusLabel.stringValue = ""
+        statusLabel.stringValue = store.savedProvider() == nil
+            ? "Choose where your drafts are sent. Nothing is sent until you Save." : ""
         loadSlots()
 
         hasStoredKey = false

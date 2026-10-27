@@ -15,6 +15,8 @@ final class OptimizerController {
     // What the open rewrite window was built from, for one-card restyle/tweak.
     private var shown: (client: ModelClient, original: String, options: [RewriteOption])?
     private var regenerate: Task<Void, Never>?
+    /// Called when no model source has been chosen yet; the shell opens Settings.
+    var onNeedsSetup: (() -> Void)?
     // A failed replace may still have written; its Undo must outlive closing the window.
     private var uncertainWrite = false
 
@@ -40,7 +42,12 @@ final class OptimizerController {
 
     private func start(_ target: TriggerController.Target, token: UInt64) async {
         let store = SettingsStore()
-        let provider = store.loadProvider()
+        // A fresh install has chosen nothing: send nothing, not even a `gh` token lookup.
+        guard let provider = store.savedProvider() else {
+            fail("Choose where your drafts are sent in Settings. Nothing is sent until you Save.", token: token)
+            onNeedsSetup?()
+            return
+        }
         do {
             let client: ModelClient
             switch provider {

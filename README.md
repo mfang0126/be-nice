@@ -6,7 +6,7 @@ Rewrite your Slack drafts into clearer, kinder messages — pick from three vers
 
 *(Synthetic sample draft.)*
 
-A macOS menu-bar app for the Slack desktop app. You write a draft as usual; Be Nice rewrites the whole draft (no need to select anything) into three versions: **Direct**, **Friendly** and **Clear**. You pick one, optionally edit it, confirm, and it replaces your draft in Slack's message box. A visible **Undo** button restores your original text. Be Nice never sends a message for you.
+A macOS menu-bar app for the Slack desktop app. You write a draft as usual; Be Nice rewrites the whole draft (no need to select anything) into three versions: by default **Polite**, **Shorter** and **Friendly**. You pick one, optionally edit it, confirm, and it replaces your draft in Slack's message box. A visible **Undo** button restores your original text. Be Nice never sends a message for you.
 
 ## Status
 
@@ -27,14 +27,14 @@ Built for macOS 13 or later; so far tested on macOS 26 only.
 
 ## Setup
 
-Open **Settings** from the menu-bar icon and pick a model source:
+Open **Settings** from the menu-bar icon and pick a model source. **Nothing is sent until you choose a provider and click Save.**
 
 - **GitHub Copilot**: uses the GitHub login already on your Mac. Install the [GitHub CLI](https://cli.github.com) and run `gh auth login` in Terminal once; Be Nice never signs you in or out and never stores the token. Pick a model from the list (the fast `gpt-4o-mini` is preselected when your plan has it). Copilot's chat API is not publicly documented by GitHub, so this may change.
 - **Custom**: any OpenAI-compatible endpoint (`/v1/chat/completions`): base URL, API key (stored in your Keychain) and model name. Ollama or LM Studio on your own machine work too.
 
 Click **Test** to check it works. **Privacy:** with Copilot or a remote endpoint, your draft text is sent to that provider. Be Nice has no server of its own and bundles no model.
 
-You can also change the three rewrite styles in Settings (pick a preset or write your own: a name and one line of instruction), or right in the rewrite window by clicking a style name.
+You can also change the three rewrite styles in Settings: each has a name and one line of instruction, `Presets` fills a row as a starting point, and `Restore defaults` brings the original three back. In the rewrite window, clicking a style name tries another style for that one rewrite only.
 
 ## Use
 

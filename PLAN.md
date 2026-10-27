@@ -98,7 +98,11 @@
      c. 微调输入栏做明显：有边框、字号同卡片、占位字更清楚。
      d. 改写窗口靠近输入框出现（在输入框上方，水平对齐入口按钮，贴屏幕边时收进屏幕），不再居中盖住对话。
      e. 底部提示收短为一句（⌘↩ replace · esc close · nothing is sent），其余用悬停提示；去掉原稿框多余竖线；卡片高度贴合内容。
-- **后置**：选区改写、个人风格学习、其他 App 矩阵扩展、Windows、模板管理、自动抓取 Slack、历史库、嵌入式模型、公开分发签名公证。已有个人风格实现和旧盲评失败仅保留作历史证据。
+  6.（10-27 17:08 用户确认，来自 Opus 对三件未决事项的建议）：
+     a. 隐私：全新安装（没存过 provider、也没填过 base URL）时，点 Rewrite 不再默认走 Copilot；不调用 `gh`、不发任何模型请求，只在输入框旁提示并打开设置页，设置页写 “Choose where your drafts are sent. Nothing is sent until you Save.”；设置页仍可预选 Copilot，点 Save 才算选定。已填过 base URL 的老安装仍按 Custom。README Setup 开头加 “Nothing is sent until you choose a provider and click Save.”。
+     b. “改写里新增了链接/@提及/日期”的提示：**不做**，记入后置。理由：提示词已禁止添加内容，替换前看得到全文且可 Undo，数字/日期比较误报多、中文抓不准。若以后要做，只比 URL 和 @mention，卡片说明行加 `Adds: …`。
+     c. 推送：第 a 项做完、README 对齐实际行为（三个默认风格、可编辑、Restore defaults、Copilot 无公开文档可能失效）后，整个分支作为一个 PR 并进 main；推送和开 PR 需用户另行授权；v0.1.0 发布说明不改，新内容写进下一个版本的说明。
+- **后置**：选区改写、个人风格学习、其他 App 矩阵扩展、Windows、模板管理、自动抓取 Slack、历史库、嵌入式模型、公开分发签名公证、改写里“新增链接/@提及”提示。已有个人风格实现和旧盲评失败仅保留作历史证据。
 
 ## 模型接入（v3 定案，10-23 已提交的 PLAN v3；macOS only 见 PLAN v3.2）
 
