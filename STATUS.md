@@ -21,7 +21,7 @@
 ## 发布
 
 - v0.1.0 预览版已公开：https://github.com/mfang0126/be-nice/releases/tag/v0.1.0 （PR #1 合并为 main `361804c`，zip SHA-256 `69e3e112…4a30`，仅 arm64，仅在 macOS 26 测过，无 Developer ID）。
-- PR #2（main `da4a034`）：项目 `.claude/settings.json` 增加 SessionStart(compact) hook，压缩后自动注入本文件、`git status --short` 与最近 5 次提交。
+- 压缩后自动注入本文件、`git status --short` 与最近 5 次提交的 hook 已移到全局 `~/.claude/settings.json`（10-27 11:28；项目里有 STATUS.md 才注入）。PR #2 加的项目级副本已删除。
 - 工作分支 `mfang0126/be-nice-m0-axprobe` 继续开发，合并走 PR。
 
 ## 代码现状
