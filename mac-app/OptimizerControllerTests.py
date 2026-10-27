@@ -64,6 +64,8 @@ actor WriteBackController {
     var pendingTarget: TriggerController.Target?
     var recoveryTarget: TriggerController.Target?
     var request: Task<Void, Never>?
+    var regenerate: Task<Void, Never>?
+    var shown: (original: String, options: [String])?
     var generation: UInt64 = 7
     var busy = false
     var restored = true

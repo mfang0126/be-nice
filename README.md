@@ -27,19 +27,20 @@ Built for macOS 13 or later; so far tested on macOS 26 only.
 
 ## Setup
 
-Open **Settings** from the menu-bar icon and enter:
+Open **Settings** from the menu-bar icon and pick a model source:
 
-- **Base URL** of any OpenAI-compatible endpoint (`/v1/chat/completions`)
-- **API key** (stored in your Keychain)
-- **Model** name
+- **GitHub Copilot**: uses the GitHub login already on your Mac. Install the [GitHub CLI](https://cli.github.com) and run `gh auth login` in Terminal once; Be Nice never signs you in or out and never stores the token. Pick a model from the list (the fast `gpt-4o-mini` is preselected when your plan has it). Copilot's chat API is not publicly documented by GitHub, so this may change.
+- **Custom**: any OpenAI-compatible endpoint (`/v1/chat/completions`): base URL, API key (stored in your Keychain) and model name. Ollama or LM Studio on your own machine work too.
 
-Local servers such as Ollama or LM Studio work. **Privacy:** with a remote endpoint, your draft text is sent to that provider. Be Nice has no server of its own and bundles no model.
+Click **Test** to check it works. **Privacy:** with Copilot or a remote endpoint, your draft text is sent to that provider. Be Nice has no server of its own and bundles no model.
+
+You can also change the three rewrite styles in Settings, or right in the rewrite window by clicking a style name.
 
 ## Use
 
 1. Type a draft in Slack.
 2. Click the **Rewrite** button above Slack's message box, or press **⌃⌥⌘Space**.
-3. Choose a version, edit if you like, and confirm to replace the draft.
+3. Choose a version, edit if you like. To change one version, click its style name, or type how it should change ("more polite") and press Return. Then confirm to replace the draft.
 4. Click **Undo** to get your original back.
 
 ## Build from source

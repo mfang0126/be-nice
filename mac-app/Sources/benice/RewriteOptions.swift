@@ -1,7 +1,51 @@
 import Foundation
 
-public enum RewriteStyle: String, Codable, Sendable {
-    case direct, friendly, clear
+/// A named way to rewrite. `instruction` goes to the model; `name` labels the card.
+public struct RewriteStyle: Codable, Equatable, Sendable {
+    public var name: String
+    public var instruction: String
+
+    public init(name: String, instruction: String) {
+        self.name = name
+        self.instruction = instruction
+    }
+
+    public static let presets: [RewriteStyle] = [
+        RewriteStyle(name: "Direct", instruction: "Lead with the point"),
+        RewriteStyle(name: "Friendly", instruction: "Relaxed, not stiff"),
+        RewriteStyle(name: "Clear", instruction: "One idea per sentence"),
+        RewriteStyle(name: "Shorter", instruction: "Same message, half the words"),
+        RewriteStyle(name: "Formal", instruction: "For clients and leadership"),
+        RewriteStyle(name: "Polished English", instruction: "Translate and tidy into English"),
+    ]
+
+    public static let defaultSlots = Array(presets.prefix(3))
+    static let maxInstructionLength = 200
+}
+
+/// The three style slots shown as cards, in order; slot 1 is selected by default.
+enum StyleSlots {
+    static let key = "be-nice.styleSlots"
+
+    static func load(_ defaults: UserDefaults = .standard) -> [RewriteStyle] {
+        guard let data = defaults.data(forKey: key),
+              let slots = try? JSONDecoder().decode([RewriteStyle].self, from: data),
+              slots.count == 3, slots.allSatisfy(isValid) else { return RewriteStyle.defaultSlots }
+        return slots
+    }
+
+    static func save(_ slots: [RewriteStyle], _ defaults: UserDefaults = .standard) {
+        guard slots.count == 3, slots.allSatisfy(isValid),
+              let data = try? JSONEncoder().encode(slots) else { return }
+        defaults.set(data, forKey: key)
+    }
+
+    static func isValid(_ style: RewriteStyle) -> Bool {
+        let name = style.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let instruction = style.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !name.isEmpty && name.count <= 40
+            && !instruction.isEmpty && instruction.count <= RewriteStyle.maxInstructionLength
+    }
 }
 
 public struct RewriteOption: Equatable, Sendable {
@@ -14,24 +58,25 @@ public struct RewriteOption: Equatable, Sendable {
     }
 }
 
+/// Parses `{"options":[{"id":1,"text":"..."}]}` where `id` is the 1-based slot index into `styles`.
 enum RewriteOptionsParser {
     enum ParseError: LocalizedError {
-        case invalidJSON, invalidRoot, invalidCount, invalidEntry, invalidStyle, duplicateStyle, blankText
+        case invalidJSON, invalidRoot, invalidCount, invalidEntry, invalidID, duplicateID, blankText
 
         var errorDescription: String? {
             switch self {
             case .invalidJSON: "Rewrite response must contain only a valid JSON object."
             case .invalidRoot: "Rewrite response must contain exactly an options array."
             case .invalidCount: "Rewrite response must contain between one and three options."
-            case .invalidEntry: "Each rewrite option must contain exactly style and text strings."
-            case .invalidStyle: "Rewrite style must be direct, friendly, or clear."
-            case .duplicateStyle: "Each rewrite option must use a different style."
+            case .invalidEntry: "Each rewrite option must contain exactly id and text."
+            case .invalidID: "Rewrite option id must match one of the requested styles."
+            case .duplicateID: "Each rewrite option must use a different style."
             case .blankText: "Rewrite option text must not be blank."
             }
         }
     }
 
-    static func parse(_ response: String) throws -> [RewriteOption] {
+    static func parse(_ response: String, styles: [RewriteStyle]) throws -> [RewriteOption] {
         let value: Any
         do {
             value = try JSONSerialization.jsonObject(with: Data(response.utf8))
@@ -42,25 +87,25 @@ enum RewriteOptionsParser {
               let entries = root["options"] as? [Any] else {
             throw ParseError.invalidRoot
         }
-        guard (1...3).contains(entries.count) else { throw ParseError.invalidCount }
+        guard (1...styles.count).contains(entries.count) else { throw ParseError.invalidCount }
 
-        var styles = Set<RewriteStyle>()
+        var ids = Set<Int>()
         var texts = Set<String>()
-        var options: [RewriteOption] = []
+        var found: [(Int, String)] = []
         for entry in entries {
-            guard let fields = entry as? [String: Any], Set(fields.keys) == ["style", "text"],
-                  let rawStyle = fields["style"] as? String,
+            guard let fields = entry as? [String: Any], Set(fields.keys) == ["id", "text"],
+                  let number = fields["id"] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+                  let id = Int(exactly: number.doubleValue),
                   let text = fields["text"] as? String else {
                 throw ParseError.invalidEntry
             }
-            guard let style = RewriteStyle(rawValue: rawStyle) else { throw ParseError.invalidStyle }
-            guard styles.insert(style).inserted else { throw ParseError.duplicateStyle }
+            guard styles.indices.contains(id - 1) else { throw ParseError.invalidID }
+            guard ids.insert(id).inserted else { throw ParseError.duplicateID }
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { throw ParseError.blankText }
-            if texts.insert(trimmed).inserted {
-                options.append(RewriteOption(style: style, text: text))
-            }
+            if texts.insert(trimmed).inserted { found.append((id, text)) }
         }
-        return options
+        // Cards follow slot order, whatever order the model answered in.
+        return found.sorted { $0.0 < $1.0 }.map { RewriteOption(style: styles[$0.0 - 1], text: $0.1) }
     }
 }

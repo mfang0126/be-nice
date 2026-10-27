@@ -8,6 +8,10 @@ struct ModelSettings: Equatable {
     var model: String
 }
 
+enum Provider: String, Equatable, Sendable {
+    case copilot, custom
+}
+
 enum SettingsError: Error, Equatable, LocalizedError {
     case emptyBaseURL
     case invalidBaseURL
@@ -78,6 +82,9 @@ struct SettingsStore: @unchecked Sendable {
     static let baseURLKey = "be-nice.model.baseURL"
     static let modelKey = "be-nice.model.id"
 
+    static let providerKey = "be-nice.provider"
+    static let copilotModelKey = "be-nice.copilot.model"
+
     private let defaults: UserDefaults
     private let hasKey: () throws -> Bool
     private let saveKey: (String) throws -> Void
@@ -95,6 +102,28 @@ struct SettingsStore: @unchecked Sendable {
         ModelSettings(
             baseURL: defaults.string(forKey: Self.baseURLKey) ?? "",
             model: defaults.string(forKey: Self.modelKey) ?? "")
+    }
+
+    /// The saved choice; else `.custom` for installs that already saved a base URL (they were
+    /// configured before providers existed), else `.copilot`.
+    func loadProvider() -> Provider {
+        if let raw = defaults.string(forKey: Self.providerKey), let saved = Provider(rawValue: raw) {
+            return saved
+        }
+        return load().baseURL.isEmpty ? .copilot : .custom
+    }
+
+    func saveProvider(_ provider: Provider) {
+        defaults.set(provider.rawValue, forKey: Self.providerKey)
+    }
+
+    func loadCopilotModel() -> String {
+        let saved = defaults.string(forKey: Self.copilotModelKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return saved?.isEmpty == false ? saved! : CopilotAuth.preferredModel
+    }
+
+    func saveCopilotModel(_ id: String) {
+        defaults.set(id, forKey: Self.copilotModelKey)
     }
 
     /// Presence check only; the secret value never reaches the UI or logs.
@@ -117,6 +146,58 @@ struct SettingsStore: @unchecked Sendable {
     }
 }
 
+// MARK: - Save plan (pure persistence, covered by SettingsTests)
+
+/// What Save writes for the chosen provider. A custom plan carries an already
+/// validated draft, so a validation failure never reaches the store.
+enum SettingsSavePlan: Equatable, Sendable {
+    case copilot(model: String)
+    case custom(ValidatedSettings)
+}
+
+extension SettingsStore {
+    func loadSlots() -> [RewriteStyle] {
+        StyleSlots.load(defaults)
+    }
+
+    /// Custom first: a rejected Keychain write throws before anything else is written.
+    func apply(_ plan: SettingsSavePlan, slots: [RewriteStyle]) throws {
+        guard slots.count == 3, slots.allSatisfy(StyleSlots.isValid) else {
+            throw SettingsError.save("Pick a valid style for each of the three slots.")
+        }
+        switch plan {
+        case .copilot(let model):
+            saveProvider(.copilot)
+            saveCopilotModel(model)
+        case .custom(let validated):
+            try save(validated)
+            saveProvider(.custom)
+        }
+        StyleSlots.save(slots, defaults)
+    }
+}
+
+/// Everything the window needs from the network or `gh`; tests inject fakes.
+/// The closures run on detached tasks and must be thread-safe.
+struct SettingsNetwork: Sendable {
+    var token: @Sendable () throws -> String
+    var listModels: @Sendable (String) async throws -> [CopilotAuth.Model]
+    /// One real rewrite with the given config and bearer/API key.
+    var runTest: @Sendable (ModelConfig, String, [RewriteStyle]) async throws -> Void
+    var storedKey: @Sendable () throws -> String?
+
+    static let testDraft = "hi, the numbers in the report look off, can you fix them by tomorrow?"
+
+    static let live = SettingsNetwork(
+        token: { try CopilotAuth.token() },
+        listModels: { try await CopilotAuth.listModels(token: $0) },
+        runTest: { config, key, styles in
+            _ = try await ModelClient(config: config, apiKey: key)
+                .rewriteOptions(text: SettingsNetwork.testDraft, styles: styles)
+        },
+        storedKey: { try CredentialStore.loadAPIKey() })
+}
+
 /// Detached-task results. Plain `String` messages keep the payload Sendable.
 private enum KeyPresenceResult: Sendable {
     case present(Bool)
@@ -128,14 +209,67 @@ private enum SaveResult: Sendable {
     case failed(String)
 }
 
+private enum ModelsResult: Sendable {
+    case models([CopilotAuth.Model])
+    case failed(String)
+}
+
+private enum TestInput: Sendable {
+    case copilot(model: String)
+    case custom(ModelConfig, apiKey: String?)
+}
+
+private enum TestResult: Sendable {
+    case worked(seconds: Double)
+    case failed(String)
+}
+
 // MARK: - Window
 
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    private static let contentWidth: CGFloat = 480
+
     private let store: SettingsStore
+    private let network: SettingsNetwork
+
+    private let providerControl = NSSegmentedControl(
+        labels: ["GitHub Copilot", "Custom"], trackingMode: .selectOne, target: nil, action: nil)
+    private let copilotStatusLabel = NSTextField(wrappingLabelWithString: "")
+    private let copilotModelPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private lazy var copilotPane: NSView = {
+        let grid = NSGridView(views: [[fieldLabel("Model"), copilotModelPopup]])
+        grid.columnSpacing = 10
+        grid.column(at: 0).xPlacement = .trailing
+        let pane = NSStackView(views: [copilotStatusLabel, grid])
+        pane.orientation = .vertical
+        pane.alignment = .leading
+        pane.spacing = 8
+        return pane
+    }()
+
     private let baseURLField = NSTextField()
     private let modelField = NSTextField()
     private let apiKeyField = NSSecureTextField()
+    private lazy var customPane: NSView = {
+        let grid = NSGridView(views: [
+            [fieldLabel("Base URL"), baseURLField],
+            [fieldLabel("Model"), modelField],
+            [fieldLabel("API key"), apiKeyField],
+        ])
+        grid.rowSpacing = 8
+        grid.columnSpacing = 10
+        grid.column(at: 0).xPlacement = .trailing
+        for field in [baseURLField, modelField, apiKeyField] {
+            field.widthAnchor.constraint(equalToConstant: 340).isActive = true
+        }
+        return grid
+    }()
+
+    private let slotPopups = [NSPopUpButton(), NSPopUpButton(), NSPopUpButton()]
+    /// Items of each slot popup, in menu order.
+    private var slotChoices: [[RewriteStyle]] = [[], [], []]
+
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
 
     private lazy var saveButton: NSButton = {
@@ -143,6 +277,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         button.bezelStyle = .rounded
         button.keyEquivalent = "\r"
         button.keyEquivalentModifierMask = []
+        return button
+    }()
+
+    private lazy var testButton: NSButton = {
+        let button = NSButton(title: "Test", target: self, action: #selector(testSettings))
+        button.bezelStyle = .rounded
         return button
     }()
 
@@ -158,16 +298,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// While true the form is locked: fields, Close, and the window close
     /// button are disabled, and reload/reopen cannot supersede the save.
     private var isSaving = false
+    /// Test/Save are disabled and the provider/fields locked while a test runs.
+    private var isTesting = false
     /// Kept until a successful reload/save so a Keychain read failure is never
     /// silently downgraded to "no key stored".
     private var keychainReadError: String?
-    /// Drops stale async Keychain results (reload/save completions).
+    /// Drops stale async results (Keychain presence, save, and test completions).
     private var stateGeneration = 0
+    /// Test results have their own counter so a test never discards a pending Keychain check.
+    private var testGeneration = 0
+    /// Drops stale Copilot model-list results; separate so a Keychain check cannot discard them.
+    private var copilotGeneration = 0
 
-    init(store: SettingsStore = SettingsStore()) {
+    init(store: SettingsStore = SettingsStore(), network: SettingsNetwork = .live) {
         self.store = store
+        self.network = network
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 230),
+            contentRect: NSRect(x: 0, y: 0, width: Self.contentWidth + 40, height: 400),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false)
@@ -176,8 +323,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         // The controller owns the window; closing it must not release it.
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.center()
         buildContent(in: window)
+        applyProvider(store.loadProvider(), refresh: false)
+        window.center()
     }
 
     required init?(coder: NSCoder) {
@@ -206,6 +354,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         !isSaving
     }
 
+    // MARK: Pure helpers
+
+    /// The three picks as slots, or nil when any pick is not a valid style.
+    static func slotsFromSelection(_ picks: [RewriteStyle]) -> [RewriteStyle]? {
+        picks.count == 3 && picks.allSatisfy(StyleSlots.isValid) ? picks : nil
+    }
+
+    /// Menu content for one slot: every preset, plus the stored style when it is not a preset.
+    static func slotChoices(for stored: RewriteStyle) -> [RewriteStyle] {
+        RewriteStyle.presets + (RewriteStyle.presets.contains(stored) ? [] : [stored])
+    }
+
     // MARK: Layout
 
     private func buildContent(in window: NSWindow) {
@@ -218,36 +378,53 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         modelField.setAccessibilityLabel("Model")
         apiKeyField.setAccessibilityLabel("API key")
 
-        let grid = NSGridView(views: [
-            [fieldLabel("Base URL"), baseURLField],
-            [fieldLabel("Model"), modelField],
-            [fieldLabel("API key"), apiKeyField],
-        ])
-        grid.rowSpacing = 8
-        grid.columnSpacing = 10
-        grid.column(at: 0).xPlacement = .trailing
-        for field in [baseURLField, modelField, apiKeyField] {
-            field.widthAnchor.constraint(equalToConstant: 340).isActive = true
-        }
+        providerControl.segmentStyle = .rounded
+        providerControl.target = self
+        providerControl.action = #selector(providerChanged)
+        providerControl.setAccessibilityLabel("Provider")
+
+        copilotStatusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        copilotStatusLabel.textColor = .secondaryLabelColor
+        copilotStatusLabel.preferredMaxLayoutWidth = Self.contentWidth
+        copilotModelPopup.setAccessibilityLabel("Copilot model")
+        copilotModelPopup.widthAnchor.constraint(equalToConstant: 260).isActive = true
+
+        let stylesHeader = NSTextField(labelWithString: "Your three styles")
+        stylesHeader.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+        let slotNames = ["1 (default)", "2", "3"]
+        let stylesGrid = NSGridView(views: zip(slotNames, slotPopups).map { name, popup in
+            popup.setAccessibilityLabel("Style \(name)")
+            popup.widthAnchor.constraint(equalToConstant: 200).isActive = true
+            return [fieldLabel(name), popup]
+        })
+        stylesGrid.rowSpacing = 6
+        stylesGrid.columnSpacing = 10
+        stylesGrid.column(at: 0).xPlacement = .leading
+        stylesGrid.column(at: 0).width = 90
+        stylesGrid.setContentHuggingPriority(.required, for: .horizontal)
 
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         statusLabel.textColor = .secondaryLabelColor
-        statusLabel.preferredMaxLayoutWidth = 400
+        statusLabel.preferredMaxLayoutWidth = Self.contentWidth
         statusLabel.setAccessibilityLabel("Settings status")
 
-        let buttons = NSStackView(views: [closeButton, saveButton])
+        let buttons = NSStackView(views: [closeButton, testButton, saveButton])
         buttons.orientation = .horizontal
         buttons.spacing = 8
 
-        let stack = NSStackView(views: [grid, statusLabel, buttons])
+        let stack = NSStackView(views: [
+            providerControl, copilotPane, customPane, stylesHeader, stylesGrid, statusLabel, buttons,
+        ])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
+        stack.setCustomSpacing(8, after: stylesHeader)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let content = NSView()
         content.addSubview(stack)
         NSLayoutConstraint.activate([
+            stack.widthAnchor.constraint(equalToConstant: Self.contentWidth),
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
             stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
@@ -255,21 +432,121 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ])
         window.contentView = content
 
-        // Tab order matches the visual row (Close then Save) and the default
-        // (Return) button is Save.
+        // Hidden panes are skipped by the key loop. Return (default button) is Save.
         apiKeyField.delegate = self
-        window.initialFirstResponder = baseURLField
-        baseURLField.nextKeyView = modelField
-        modelField.nextKeyView = apiKeyField
-        apiKeyField.nextKeyView = closeButton
-        closeButton.nextKeyView = saveButton
-        saveButton.nextKeyView = baseURLField
+        window.initialFirstResponder = providerControl
+        let order: [NSView] = [providerControl, copilotModelPopup, baseURLField, modelField, apiKeyField]
+            + slotPopups + [closeButton, testButton, saveButton]
+        for (view, next) in zip(order, order.dropFirst() + [order[0]]) { view.nextKeyView = next }
     }
 
     private func fieldLabel(_ title: String) -> NSTextField {
         let label = NSTextField(labelWithString: title)
         label.alignment = .right
         return label
+    }
+
+    /// Resizes to the content's fitting height, keeping the title bar where it is.
+    private func fitWindow() {
+        guard let window, let content = window.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        let size = NSSize(width: Self.contentWidth + 40, height: content.fittingSize.height)
+        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
+        frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+        window.setFrame(frame, display: false)
+    }
+
+    // MARK: Provider
+
+    private var selectedProvider: Provider {
+        providerControl.selectedSegment == 1 ? .custom : .copilot
+    }
+
+    private func applyProvider(_ provider: Provider, refresh: Bool) {
+        providerControl.selectedSegment = provider == .custom ? 1 : 0
+        copilotPane.isHidden = provider != .copilot
+        customPane.isHidden = provider != .custom
+        updateButtonState()
+        fitWindow()
+        if refresh, provider == .copilot { refreshCopilot() }
+    }
+
+    @objc private func providerChanged() {
+        show("", isError: false)
+        applyProvider(selectedProvider, refresh: true)
+    }
+
+    private var selectedCopilotModelID: String? {
+        copilotModelPopup.selectedItem?.representedObject as? String
+    }
+
+    /// Token and model list come off the main actor (`gh` is a subprocess).
+    private func refreshCopilot() {
+        copilotGeneration &+= 1
+        let generation = copilotGeneration
+        let wanted = selectedCopilotModelID ?? store.loadCopilotModel()
+        copilotModelPopup.menu?.removeAllItems()
+        copilotModelPopup.isEnabled = false
+        setCopilotStatus("Checking GitHub login…", isError: false)
+
+        Task {
+            let result = await Task.detached { [network] () -> ModelsResult in
+                do {
+                    return .models(try await network.listModels(try network.token()))
+                } catch {
+                    return .failed(error.localizedDescription)
+                }
+            }.value
+            guard generation == self.copilotGeneration else { return }
+            switch result {
+            case .failed(let message):
+                self.setCopilotStatus(message, isError: true)
+            case .models(let models):
+                let initial = models.first { $0.id == wanted } ?? CopilotAuth.defaultModel(in: models)
+                guard let initial else {
+                    self.setCopilotStatus("No models available", isError: true)
+                    break
+                }
+                for model in models {
+                    let item = NSMenuItem(title: model.name, action: nil, keyEquivalent: "")
+                    item.representedObject = model.id
+                    self.copilotModelPopup.menu?.addItem(item)
+                }
+                if let index = models.firstIndex(of: initial) {
+                    self.copilotModelPopup.selectItem(at: index)
+                }
+                self.copilotModelPopup.isEnabled = !self.isBusy
+                self.setCopilotStatus("Using your GitHub login.", isError: false)
+            }
+        }
+    }
+
+    private func setCopilotStatus(_ message: String, isError: Bool) {
+        copilotStatusLabel.textColor = isError ? .systemRed : .secondaryLabelColor
+        copilotStatusLabel.stringValue = message
+        fitWindow()
+    }
+
+    // MARK: Style slots
+
+    private func loadSlots() {
+        for (index, style) in store.loadSlots().enumerated() {
+            let choices = Self.slotChoices(for: style)
+            slotChoices[index] = choices
+            let popup = slotPopups[index]
+            popup.menu?.removeAllItems()
+            for choice in choices {
+                popup.menu?.addItem(NSMenuItem(title: choice.name, action: nil, keyEquivalent: ""))
+            }
+            popup.selectItem(at: choices.firstIndex(of: style) ?? 0)
+        }
+    }
+
+    private func pickedSlots() -> [RewriteStyle] {
+        slotPopups.enumerated().compactMap { index, popup in
+            slotChoices[index].indices.contains(popup.indexOfSelectedItem)
+                ? slotChoices[index][popup.indexOfSelectedItem] : nil
+        }
     }
 
     // MARK: Load / save
@@ -282,9 +559,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         apiKeyField.stringValue = ""
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.stringValue = ""
+        loadSlots()
 
         hasStoredKey = false
         keychainReadError = nil
+        // A superseded test must not leave the form locked.
+        isTesting = false
+        setBusyUI(false)
+        copilotModelPopup.menu?.removeAllItems()
+        applyProvider(store.loadProvider(), refresh: true)
         beginPresenceCheck()
     }
 
@@ -295,7 +578,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let generation = stateGeneration
         isCheckingKeychain = true
         updateAPIKeyPlaceholder()
-        updateSaveButtonState()
+        updateButtonState()
 
         Task {
             let result = await Task.detached { [store] () -> KeyPresenceResult in
@@ -318,7 +601,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                           isError: true)
             }
             self.updateAPIKeyPlaceholder()
-            self.updateSaveButtonState()
+            self.updateButtonState()
         }
     }
 
@@ -326,18 +609,30 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         apiKeyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func updateSaveButtonState() {
-        // A blank key depends on the stored-presence result, so wait for it.
-        saveButton.isEnabled = !isSaving && !(isCheckingKeychain && apiKeyInputIsBlank)
+    private var isBusy: Bool { isSaving || isTesting }
+
+    private func updateButtonState() {
+        // A blank custom key depends on the stored-presence result, so wait for it.
+        let waitingForKeychain = selectedProvider == .custom && isCheckingKeychain && apiKeyInputIsBlank
+        let enabled = !isBusy && !waitingForKeychain
+        saveButton.isEnabled = enabled
+        testButton.isEnabled = enabled
+    }
+
+    private func setBusyUI(_ busy: Bool) {
+        providerControl.isEnabled = !busy
+        baseURLField.isEnabled = !busy
+        modelField.isEnabled = !busy
+        apiKeyField.isEnabled = !busy
+        slotPopups.forEach { $0.isEnabled = !busy }
+        copilotModelPopup.isEnabled = !busy && copilotModelPopup.numberOfItems > 0
+        updateButtonState()
     }
 
     private func setSavingUI(_ saving: Bool) {
-        baseURLField.isEnabled = !saving
-        modelField.isEnabled = !saving
-        apiKeyField.isEnabled = !saving
+        setBusyUI(saving || isTesting)
         closeButton.isEnabled = !saving
         window?.standardWindowButton(.closeButton)?.isEnabled = !saving
-        updateSaveButtonState()
     }
 
     private func updateAPIKeyPlaceholder() {
@@ -352,51 +647,77 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    @objc private func saveSettings() {
-        guard !isSaving else { return }
-
+    /// The Custom pane as a validated draft, with the same rules for Save and Test.
+    private func validatedCustomDraft() -> Result<ValidatedSettings, SettingsError> {
         let draft = SettingsDraft(
             baseURL: baseURLField.stringValue,
             model: modelField.stringValue,
             apiKey: apiKeyField.stringValue,
             hasStoredAPIKey: hasStoredKey)
-
         // A failed presence read is not "no key": keep the real error.
-        if draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           let readError = keychainReadError {
-            show(SettingsError.keychainRead(readError).localizedDescription, isError: true)
-            return
+        if apiKeyInputIsBlank, let readError = keychainReadError {
+            return .failure(.keychainRead(readError))
         }
+        return draft.validated()
+    }
 
-        switch draft.validated() {
-        case .failure(let error):
-            show(error.localizedDescription, isError: true)
-        case .success(let validated):
-            // Invalidate any in-flight presence result: the save outcome is
-            // authoritative for whether a key now exists.
-            stateGeneration &+= 1
-            let generation = stateGeneration
-            isSaving = true
-            isCheckingKeychain = false
-            setSavingUI(true)
-            show("Saving…", isError: false)
+    /// The plan for the current provider, or nil after showing why not.
+    private func currentPlan() -> SettingsSavePlan? {
+        switch selectedProvider {
+        case .copilot:
+            guard let model = selectedCopilotModelID else {
+                show("Pick a Copilot model first. Click Test to reload the list.", isError: true)
+                return nil
+            }
+            return .copilot(model: model)
+        case .custom:
+            switch validatedCustomDraft() {
+            case .failure(let error):
+                show(error.localizedDescription, isError: true)
+                return nil
+            case .success(let validated):
+                return .custom(validated)
+            }
+        }
+    }
 
-            Task {
-                let result = await Task.detached { [store] () -> SaveResult in
-                    do {
-                        try store.save(validated)
-                        return .saved
-                    } catch {
-                        return .failed(error.localizedDescription)
-                    }
-                }.value
-                // Reload/reopen are blocked while saving, so this only guards
-                // against future supersession paths.
-                guard generation == self.stateGeneration else { return }
-                self.isSaving = false
-                self.setSavingUI(false)
-                switch result {
-                case .saved:
+    private func currentSlots() -> [RewriteStyle]? {
+        guard let slots = Self.slotsFromSelection(pickedSlots()) else {
+            show("Pick a valid style for each of the three slots.", isError: true)
+            return nil
+        }
+        return slots
+    }
+
+    @objc private func saveSettings() {
+        guard !isBusy, let slots = currentSlots(), let plan = currentPlan() else { return }
+
+        // Invalidate any in-flight presence result: the save outcome is
+        // authoritative for whether a key now exists.
+        stateGeneration &+= 1
+        let generation = stateGeneration
+        isSaving = true
+        isCheckingKeychain = false
+        setSavingUI(true)
+        show("Saving…", isError: false)
+
+        Task {
+            let result = await Task.detached { [store] () -> SaveResult in
+                do {
+                    try store.apply(plan, slots: slots)
+                    return .saved
+                } catch {
+                    return .failed(error.localizedDescription)
+                }
+            }.value
+            // Reload/reopen are blocked while saving, so this only guards
+            // against future supersession paths.
+            guard generation == self.stateGeneration else { return }
+            self.isSaving = false
+            self.setSavingUI(false)
+            switch result {
+            case .saved:
+                if case .custom(let validated) = plan {
                     // Fields were disabled during the save, so replacing their
                     // text with the normalized values cannot clobber user edits.
                     self.baseURLField.stringValue = validated.settings.baseURL
@@ -407,17 +728,73 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                         self.apiKeyField.stringValue = ""
                     }
                     self.updateAPIKeyPlaceholder()
-                    self.show("Saved.", isError: false)
-                case .failed(let message):
-                    self.show(message, isError: true)
                 }
+                self.show("Saved.", isError: false)
+            case .failed(let message):
+                self.show(message, isError: true)
             }
+        }
+    }
+
+    /// One real rewrite with the unsaved settings; nothing is persisted.
+    @objc private func testSettings() {
+        guard !isBusy, let slots = currentSlots(), let plan = currentPlan() else { return }
+
+        let input: TestInput
+        switch plan {
+        case .copilot(let model):
+            input = .copilot(model: model)
+        case .custom(let validated):
+            guard let url = URL(string: validated.settings.baseURL) else {
+                show(SettingsError.invalidBaseURL.localizedDescription, isError: true)
+                return
+            }
+            input = .custom(ModelConfig(baseURL: url, model: validated.settings.model),
+                            apiKey: validated.apiKeyToSave)
+        }
+
+        testGeneration &+= 1
+        let generation = testGeneration
+        isTesting = true
+        setBusyUI(true)
+        show("Testing…", isError: false)
+
+        Task {
+            let started = Date()
+            let result = await Task.detached { [network] () -> TestResult in
+                do {
+                    switch input {
+                    case .copilot(let model):
+                        try await network.runTest(CopilotAuth.config(model: model),
+                                                  try network.token(), slots)
+                    case .custom(let config, let apiKey):
+                        guard let key = try apiKey ?? network.storedKey() else {
+                            throw SettingsError.missingAPIKey
+                        }
+                        try await network.runTest(config, key, slots)
+                    }
+                    return .worked(seconds: Date().timeIntervalSince(started))
+                } catch {
+                    return .failed(error.localizedDescription)
+                }
+            }.value
+            guard generation == self.testGeneration else { return }
+            self.isTesting = false
+            self.setBusyUI(false)
+            switch result {
+            case .worked(let seconds):
+                self.show(String(format: "Worked in %.1f s.", seconds), isError: false)
+            case .failed(let message):
+                self.show(message, isError: true)
+            }
+            if case .copilot = input { self.refreshCopilot() }
         }
     }
 
     private func show(_ message: String, isError: Bool) {
         statusLabel.textColor = isError ? .systemRed : .secondaryLabelColor
         statusLabel.stringValue = message
+        fitWindow()
     }
 
     @objc private func closeWindow() {
@@ -428,6 +805,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 extension SettingsWindowController: NSTextFieldDelegate {
     /// A nonblank key makes Save independent of the presence check.
     func controlTextDidChange(_ obj: Notification) {
-        updateSaveButtonState()
+        updateButtonState()
     }
 }

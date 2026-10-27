@@ -16,8 +16,8 @@ struct RewriteCopyOnlyTests {
         let controller = RewriteWindowController(presentsWindows: false, copyText: {
             copied.append($0); return true
         })
-        let options = [RewriteOption(style: .direct, text: "First candidate"),
-                       RewriteOption(style: .friendly, text: "Second candidate")]
+        let options = [RewriteOption(style: RewriteStyle.presets[0], text: "First candidate"),
+                       RewriteOption(style: RewriteStyle.presets[1], text: "Second candidate")]
         func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
         func button(_ id: String) -> NSButton {
             descendants(controller.window!.contentView!).first { $0.identifier?.rawValue == id } as! NSButton
@@ -89,6 +89,19 @@ struct RewriteCopyOnlyTests {
         expect(editor().accessibilityLabel() == "Edit rewrite" && editor().isEditable, "candidate remains accessible and editable")
         expect(root.bounds.contains(statusView().enclosingScrollView!.convert(statusView().enclosingScrollView!.bounds, to: root)),
                "status viewport stays in bounds")
+        // Restyle and tweak only change text, so they work in copy-only mode.
+        var restyled: [Int] = []
+        var tweaked: [String] = []
+        controller.onRestyle = { i, _ in restyled.append(i) }
+        controller.onTweak = { _, t, _ in tweaked.append(t) }
+        controller.restyleCustom(1, "Politer")
+        let field = descendants(controller.window!.contentView!).first { $0.identifier?.rawValue == "rewrite-tweak" } as! NSTextField
+        field.stringValue = "shorter"
+        _ = controller.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        expect(restyled == [1] && tweaked == ["shorter"], "copy-only still restyles and tweaks")
+        expect(button("primary").title == "Copy rewrite", "primary stays copy in copy-only after regenerate")
+        controller.updateOption(1, RewriteOption(style: RewriteStyle.presets[3], text: "Regenerated"))
+        expect(editor().string == "Regenerated" && button("primary").title == "Copy rewrite", "updateOption in copy-only keeps copy")
         controller.dismiss()
         present()
         pick(0)

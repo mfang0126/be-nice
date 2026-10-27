@@ -24,13 +24,14 @@ swift build --package-path mac-app
 mac-app/.build/debug/benice --selftest >/dev/null && echo "PASS benice-selftest" || { echo "FAIL benice-selftest"; fail=1; }
 
 run model $S/ModelClient.swift $S/RewriteOptions.swift $T/ModelClientTests.swift
+run copilot-auth -lib $S/ModelClient.swift $S/RewriteOptions.swift $S/CopilotAuth.swift $T/CopilotAuthTests.swift
 run rewrite-options -lib $S/ModelClient.swift $S/RewriteOptions.swift $T/RewriteOptionsTests.swift
 run rewrite-window -lib $S/ModelClient.swift $S/RewriteOptions.swift $S/RewriteWindowController.swift $T/RewriteWindowTests.swift
 run rewrite-copy-only -lib $S/ModelClient.swift $S/RewriteOptions.swift $S/RewriteWindowController.swift $T/RewriteCopyOnlyTests.swift
 run writeback -lib $S/WriteBack.swift $S/ModelClient.swift $S/RewriteOptions.swift $T/WriteBackTests.swift
 run trigger -lib $S/TriggerController.swift $T/TriggerTests.swift
 run status-pill -lib $S/TriggerController.swift $S/StatusPill.swift $T/StatusPillTests.swift
-run settings -lib $S/CredentialStore.swift $S/ModelClient.swift $S/RewriteOptions.swift $S/SettingsWindow.swift $T/SettingsTests.swift
+run settings -lib $S/CredentialStore.swift $S/ModelClient.swift $S/RewriteOptions.swift $S/CopilotAuth.swift $S/SettingsWindow.swift $T/SettingsTests.swift
 run slack-diagnostic $S/SlackDiagnostic.swift $T/SlackDiagnosticTests.swift
 run style-profile $S/StyleProfile.swift $T/StyleProfileTests.swift
 run style-extraction $S/ModelClient.swift $S/RewriteOptions.swift $S/StyleProfile.swift $S/StyleExtraction.swift $T/StyleExtractionTests.swift
