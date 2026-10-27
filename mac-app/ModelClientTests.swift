@@ -272,6 +272,40 @@ struct ModelClientTests {
         }
         expect(RequestStub.state.bodies().isEmpty, "blank options input sends no request")
 
+        // Draft fidelity: language (D1), leading tag (D1/all cases), prompt rules (D1b, D2).
+        let zhDraft = "[be-nice test] 麻烦你明天之前看一下构建日志，有问题告诉我。"
+        let zhStyles = Array(RewriteStyle.presets.prefix(2))
+        RequestStub.state.reset(content: #"{"options":[{"id":1,"text":"Could you please check the build log before tomorrow?"},{"id":2,"text":"明天前请看下构建日志，有问题告诉我。"}]}"#)
+        let zhGot = try! await styledClient.rewriteOptions(text: zhDraft, styles: zhStyles)
+        expect(zhGot == [RewriteOption(style: zhStyles[1], text: "[be-nice test] 明天前请看下构建日志，有问题告诉我。")],
+               "English candidate for a Chinese draft is dropped; the lost tag is restored")
+        RequestStub.state.reset(content: #"{"options":[{"id":1,"text":"Could you please check the build log?"},{"id":2,"text":"Please check the build log."}]}"#)
+        do {
+            _ = try await styledClient.rewriteOptions(text: zhDraft, styles: zhStyles)
+            expect(false, "all-English candidates for a Chinese draft must fail")
+        } catch let error as ModelClientError {
+            expect(error == .wrongLanguage && error.errorDescription?.contains("different language") == true,
+                   "all candidates dropped -> readable wrongLanguage error")
+        } catch { expect(false, "unexpected language error: \(error)") }
+        RequestStub.state.reset(content: "Please check the build log.")
+        do {
+            _ = try await styledClient.rewriteOne(original: zhDraft, style: zhStyles[0], current: nil, instruction: nil)
+            expect(false, "rewriteOne must reject a wrong-language card")
+        } catch let error as ModelClientError { expect(error == .wrongLanguage, "rewriteOne rejects wrong language") }
+        catch { expect(false, "unexpected rewriteOne error: \(error)") }
+        expect(ModelClient.scriptsAgree(draft: "[WIP] 好的", candidate: "没问题") == true,
+               "a Latin tag does not flip a short Chinese draft to Latin")
+        expect(ModelClient.keepingTag(of: "[WIP] fix it", in: "Please fix it.") == "[WIP] Please fix it.", "tag restored with the draft's gap")
+        expect(ModelClient.keepingTag(of: "[WIP] fix it", in: "[WIP] Fix it.") == "[WIP] Fix it.", "present tag untouched")
+        expect(ModelClient.keepingTag(of: "fix it [x]", in: "Fix it.") == "Fix it.", "only a leading tag is enforced")
+        for prompt in [ModelClient.systemPrompt, ModelClient.optionsSystemPrompt, ModelClient.rewriteOneSystemPrompt] {
+            expect(prompt.contains("Chinese") && prompt.contains("[WIP]"), "every prompt keeps language and tag")
+        }
+        for prompt in [ModelClient.optionsSystemPrompt, ModelClient.rewriteOneSystemPrompt] {
+            expect(prompt.contains("statement a statement") && prompt.contains("please wait"),
+                   "prompt forbids statement->question and added content")
+        }
+
         // rewriteOne: separate delimited messages under the fixed system prompt.
         let formal = RewriteStyle.presets[4]
         RequestStub.state.reset(content: "  Rewritten.\n")

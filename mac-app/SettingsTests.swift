@@ -305,6 +305,10 @@ struct SettingsTests {
                && RewriteStyle.defaultSlots.map(\.name) == ["Polite", "Shorter", "Friendly"],
                "the former default trio moves to Polite / Shorter / Friendly")
 
+        let hint = SettingsWindowController.modelsLoadedStatus
+        expect(hint.contains("Models loaded") && hint.contains("Test again") && hint.contains("one test request"),
+               "after the first Test loads models, the status says so and that Test again sends one request")
+
         if failures == 0 {
             print("SELFTEST PASS")
             exit(0)

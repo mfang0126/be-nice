@@ -502,7 +502,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Token and model list come off the main actor (`gh` is a subprocess).
-    private func refreshCopilot() {
+    static let modelsLoadedStatus = "Models loaded. Click Test again to send one test request."
+
+    private func refreshCopilot(loadedByTest: Bool = false) {
         copilotGeneration &+= 1
         let generation = copilotGeneration
         let wanted = selectedCopilotModelID ?? store.loadCopilotModel()
@@ -537,7 +539,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                     self.copilotModelPopup.selectItem(at: index)
                 }
                 self.copilotModelPopup.isEnabled = !self.isBusy
-                self.setCopilotStatus("Using your GitHub login.", isError: false)
+                self.setCopilotStatus(loadedByTest ? Self.modelsLoadedStatus : "Using your GitHub login.", isError: false)
             }
         }
     }
@@ -776,7 +778,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func testSettings() {
         // No models yet (first run): Test first loads the list, which is the check the user asked for.
         if !isBusy, selectedProvider == .copilot, selectedCopilotModelID == nil {
-            refreshCopilot()
+            refreshCopilot(loadedByTest: true)
             return
         }
         guard !isBusy, let slots = currentSlots(), let plan = currentPlan() else { return }
