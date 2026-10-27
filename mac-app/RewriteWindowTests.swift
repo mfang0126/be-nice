@@ -239,7 +239,7 @@ struct RewriteWindowTests {
         expect(menu.items.map(\.title) == presets.map(\.name) + ["", "Describe your own…"], "menu lists presets, separator, custom")
         expect(menu.items[1].state == .on && menu.items[0].state == .off, "current style is checked")
         expect(styleButton(1).attributedTitle.string == "Friendly ▾", "title is a pull-down button")
-        expect(!tweakField().isHidden && tweakField().placeholderString == "How should it change? e.g. more polite, shorter", "tweak field visible")
+        expect(!tweakField().isHidden && tweakField().placeholderString == "Change Direct: e.g. more polite, shorter", "tweak field visible and names the selected card")
         choose(menu.items[1])
         expect(restyles.isEmpty, "current style does nothing")
         choose(menu.items[4])

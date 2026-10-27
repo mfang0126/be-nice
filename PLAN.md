@@ -85,6 +85,12 @@
   2. 三种风格可改：点卡片上的风格名弹出预设（Direct / Friendly / Clear / Shorter / Formal / Polished English）或自写一句；只重写这一张卡片，并记住作为下次默认。设置页可改同样三个位置，每个位置除预设外可“Write your own…”写自己的风格（名字 ≤40 + 一句说明 ≤200，10-27 15:11 用户确认）。
   2b. 微调（10-27 13:41 用户确认，和第 2 项一起做）：选中卡片可直接改字；原文下方 “How should it change?” 一行输入，回车只重写**当前选中的卡片**；换风格同样只重写那一张。
   3.（10-27 14:20 已实现，待用户实测）设置页兼首次引导：provider 只有两种（10-27 13:11 用户改定）——**Custom**：任意 OpenAI 兼容地址，自己填 base URL、key、model，不做服务商预设；**GitHub Copilot**：电脑上已登录就直接用，没登录只提示怎么登录，不做 App 内登录。Test 显示一次成功和耗时。
+  5.（10-27 16:03 用户确认，来自 Opus 独立 review；a–e 已实现，16:15 真实窗口实测通过）：
+     a. 提示词加规则：不把问句改成命令，不添加原文没有的问候、感谢、落款，不比原文更强硬；新增预设 Polite；默认三个位置改为 Polite / Shorter / Friendly（旧默认 Direct/Friendly/Clear 且没改过的自动换成新默认）。
+     b. 微调栏占位字写明作用对象，如 “Change Polite: e.g. shorter, more casual”。
+     c. 用户在改写窗口按 Esc/Cancel 关闭时，不再弹出上一次替换的 “Undo last replace”（菜单栏里仍可撤销）。
+     d. 选中的卡片说明行改为 “Edit, then ⌘↩”，提示它可直接改字。
+     e. 名称统一为 Be Nice / “Rewrite shortcut”（去掉 Optimize）；设置页按钮靠右，Save 在最右。
   - 第 1 项原文显示已完成（10-27 用户认可）。
   4.（10-27 15:46 用户确认“全部按建议做”，来自 UI/UX 与使用体验分析；a–e 已实现，10-27 16:20 在 Slack 私聊实测 a、b、c、e，d 的位置待用户目测）：
      a. 在改写窗口里换风格只影响这一次，不再改默认；默认只在设置页改。（取代第 2 项里“记住作为下次默认”。）

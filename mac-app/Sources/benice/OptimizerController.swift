@@ -205,7 +205,8 @@ final class OptimizerController {
             app.activate(options: [])
         }
         statusWindow.hide()
-        if let target = recoveryTarget { showStatus("Undo last replace", anchor: target.anchorRect) }
+        // Closing a fresh rewrite must not offer the previous replace again; the menu still has Undo.
+        if !returnToTarget, let target = recoveryTarget { showStatus("Undo last replace", anchor: target.anchorRect) }
     }
 
     private func fail(_ message: String, token: UInt64) {

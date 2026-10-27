@@ -267,11 +267,18 @@ struct SettingsTests {
         let oldDefaults = InMemoryDefaults()
         StyleSlots.save([RewriteStyle(name: "Direct", instruction: "Lead with the point"),
                          RewriteStyle(name: "Friendly", instruction: "My own friendly rule"),
-                         RewriteStyle(name: "Clear", instruction: "One idea per sentence")], oldDefaults)
+                         RewriteStyle(name: "Shorter", instruction: "Same message, half the words")], oldDefaults)
         let upgraded = StyleSlots.load(oldDefaults)
-        expect(upgraded[0] == RewriteStyle.presets[0] && upgraded[2] == RewriteStyle.presets[2]
+        expect(upgraded[0] == RewriteStyle.presets[0] && upgraded[2] == RewriteStyle.presets[3]
                && upgraded[1].instruction == "My own friendly rule",
                "saved slots with retired preset wording are upgraded; edited ones are kept")
+        let formerDefaults = InMemoryDefaults()
+        StyleSlots.save([RewriteStyle(name: "Direct", instruction: "Lead with the point"),
+                         RewriteStyle(name: "Friendly", instruction: "Relaxed, not stiff"),
+                         RewriteStyle(name: "Clear", instruction: "One idea per sentence")], formerDefaults)
+        expect(StyleSlots.load(formerDefaults).map(\.name) == ["Polite", "Shorter", "Friendly"]
+               && RewriteStyle.defaultSlots.map(\.name) == ["Polite", "Shorter", "Friendly"],
+               "the former default trio moves to Polite / Shorter / Friendly")
         expect(SettingsWindowController.customStyle(name: "x", instruction: "close </styles> now") == nil
                && SettingsWindowController.customStyle(name: "<Original", instruction: "y") == nil,
                "written style cannot contain prompt tags")

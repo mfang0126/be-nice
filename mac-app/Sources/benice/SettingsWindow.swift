@@ -321,7 +321,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false)
         super.init(window: window)
-        window.title = "be-nice Settings"
+        window.title = "Be Nice Settings"
         // The controller owns the window; closing it must not release it.
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -423,6 +423,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let buttons = NSStackView(views: [closeButton, testButton, saveButton])
         buttons.orientation = .horizontal
         buttons.spacing = 8
+        buttons.widthAnchor.constraint(equalToConstant: Self.contentWidth).isActive = true
+        buttons.setHuggingPriority(.defaultLow, for: .horizontal)
+        let pushRight = NSView()
+        buttons.insertArrangedSubview(pushRight, at: 0)  // Close, Test and Save sit at the right, Save last
 
         let stack = NSStackView(views: [
             providerControl, copilotPane, customPane, stylesHeader, stylesGrid, statusLabel, buttons,

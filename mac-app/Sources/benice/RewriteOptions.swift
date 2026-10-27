@@ -17,6 +17,7 @@ public struct RewriteStyle: Codable, Equatable, Sendable {
         RewriteStyle(name: "Shorter", instruction: "Same message, half the words, only what is needed"),
         RewriteStyle(name: "Formal", instruction: "Professional tone for clients and leadership"),
         RewriteStyle(name: "Polished English", instruction: "Translate and tidy into English"),
+        RewriteStyle(name: "Polite", instruction: "Courteous and respectful; keep requests as polite questions"),
     ]
 
     /// Preset wording from earlier builds; slots saved with it are upgraded to the current wording.
@@ -25,7 +26,9 @@ public struct RewriteStyle: Codable, Equatable, Sendable {
         "Shorter": "Same message, half the words", "Formal": "For clients and leadership",
     ]
 
-    public static let defaultSlots = Array(presets.prefix(3))
+    public static let defaultSlots = ["Polite", "Shorter", "Friendly"].compactMap { name in presets.first { $0.name == name } }
+    /// The defaults before Polite existed; slots still holding exactly these are moved to the new defaults.
+    static let previousDefaultNames = ["Direct", "Friendly", "Clear"]
     static let maxInstructionLength = 200
 }
 
@@ -37,10 +40,11 @@ enum StyleSlots {
         guard let data = defaults.data(forKey: key),
               let slots = try? JSONDecoder().decode([RewriteStyle].self, from: data),
               slots.count == 3, slots.allSatisfy(isValid) else { return RewriteStyle.defaultSlots }
-        return slots.map { slot in
+        let upgraded = slots.map { slot in
             RewriteStyle.presets.first { $0.name == slot.name && RewriteStyle.retiredInstructions[slot.name] == slot.instruction }
                 ?? slot
         }
+        return upgraded.map(\.name) == RewriteStyle.previousDefaultNames ? RewriteStyle.defaultSlots : upgraded
     }
 
     static func save(_ slots: [RewriteStyle], _ defaults: UserDefaults = .standard) {

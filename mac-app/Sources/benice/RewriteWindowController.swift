@@ -101,6 +101,8 @@ private final class RewriteCard: NSView {
     private let radio = NSView()
     private var name = ""
     private var chosen = false
+    private var instruction = ""
+    private static let editHint = "Edit, then ⌘↩"
     private var enabled = true
     private var savedText: String?
     var isRegenerating: Bool { savedText != nil }
@@ -175,7 +177,8 @@ private final class RewriteCard: NSView {
         styleButton.setAccessibilityLabel("\(style.name), change style")
         styleButton.toolTip = "Use a different style for this version. Only this rewrite changes; your defaults are set in Settings."
         styleButton.menu = menu
-        hintLabel.stringValue = style.instruction
+        instruction = style.instruction
+        hintLabel.stringValue = chosen ? Self.editHint : style.instruction
         setAccessibilityLabel("\(style.name), \(style.instruction)")
     }
 
@@ -213,6 +216,7 @@ private final class RewriteCard: NSView {
         radio.layer?.borderWidth = chosen ? 5 : 1.5
         radio.layer?.borderColor = (chosen ? Palette.accent : rgb(0xB8B8BE)).cgColor
         radio.layer?.backgroundColor = NSColor.white.cgColor
+        hintLabel.stringValue = chosen ? Self.editHint : instruction
         text.isEditable = chosen && enabled && !isRegenerating
         text.isSelectable = chosen
         text.drawsBackground = chosen
@@ -412,6 +416,8 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
             let name = options.indices.contains(selected) ? options[selected].style.name : ""
             primaryButton.title = name.isEmpty ? "Replace" : "Replace with \(name)"
         }
+        let target = options.indices.contains(selected) ? options[selected].style.name : ""
+        instructionField.placeholderString = target.isEmpty ? "How should it change? e.g. more polite, shorter" : "Change \(target): e.g. more polite, shorter"
         primaryButton.isEnabled = interactive && !options.isEmpty
         var parts: [String] = []
         if busy { parts.append("Checking and replacing…") }
