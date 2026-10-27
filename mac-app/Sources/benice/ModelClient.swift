@@ -6,10 +6,17 @@ import Foundation
 public struct ModelConfig: Sendable, Equatable {
     public var baseURL: URL
     public var model: String
+    /// Full chat endpoint for services that don't follow the `/v1/chat/completions` layout
+    /// (GitHub Copilot). When set, `baseURL` is not used to build the request URL.
+    public var exactEndpoint: URL?
+    public var extraHeaders: [String: String]
 
-    public init(baseURL: URL, model: String) {
+    public init(baseURL: URL, model: String, exactEndpoint: URL? = nil,
+                extraHeaders: [String: String] = [:]) {
         self.baseURL = baseURL
         self.model = model
+        self.exactEndpoint = exactEndpoint
+        self.extraHeaders = extraHeaders
     }
 }
 
@@ -119,18 +126,28 @@ public struct ModelClient: Sendable {
         guard !model.isEmpty else {
             throw ModelClientError.invalidConfiguration("model name is empty")
         }
-        guard let scheme = config.baseURL.scheme?.lowercased(),
-              scheme == "http" || scheme == "https",
-              config.baseURL.host?.isEmpty == false,
-              let url = Self.endpoint(for: config.baseURL) else {
-            throw ModelClientError.invalidConfiguration(
-                "use an https base URL (or http on loopback), without query or fragment")
+        let url: URL
+        if let exact = config.exactEndpoint {
+            guard exact.scheme?.lowercased() == "https", exact.host?.isEmpty == false else {
+                throw ModelClientError.invalidConfiguration("the endpoint must be an https URL")
+            }
+            url = exact
+        } else {
+            guard let scheme = config.baseURL.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  config.baseURL.host?.isEmpty == false,
+                  let built = Self.endpoint(for: config.baseURL) else {
+                throw ModelClientError.invalidConfiguration(
+                    "use an https base URL (or http on loopback), without query or fragment")
+            }
+            url = built
         }
 
         var request = URLRequest(url: url, timeoutInterval: Self.timeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        for (name, value) in config.extraHeaders { request.setValue(value, forHTTPHeaderField: name) }
         request.httpBody = try JSONEncoder().encode(ChatRequest(model: model, messages: messages))
 
         let data: Data

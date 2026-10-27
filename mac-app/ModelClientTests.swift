@@ -339,6 +339,36 @@ struct ModelClientTests {
             expect(false, "unexpected rewriteOne error: \(error)")
         }
         expect(RequestStub.state.bodies().isEmpty, "rejected rewriteOne sends no request")
+
+        // exactEndpoint replaces the baseURL-derived URL; extraHeaders are sent; http is rejected.
+        let exactURL = URL(string: "https://example.test/custom/chat/completions")!
+        let exactClient = ModelClient(
+            config: ModelConfig(baseURL: URL(string: "https://ignored.example")!, model: "fixture-model",
+                                exactEndpoint: exactURL, extraHeaders: ["X-Test-Header": "test-value"]),
+            apiKey: "placeholder", session: session)
+        RequestStub.state.reset()
+        expect(try! await exactClient.optimize(text: original) == "HELLO", "exactEndpoint request succeeds")
+        let exactRequest = RequestStub.state.lastRequest
+        expect(exactRequest?.url == exactURL, "exactEndpoint is used instead of the derived URL")
+        expect(exactRequest?.value(forHTTPHeaderField: "X-Test-Header") == "test-value"
+                && exactRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer placeholder",
+               "extraHeaders are sent alongside Authorization")
+        RequestStub.state.reset()
+        let insecureClient = ModelClient(
+            config: ModelConfig(baseURL: URL(string: "https://ignored.example")!, model: "fixture-model",
+                                exactEndpoint: URL(string: "http://example.test/chat/completions")!),
+            apiKey: "placeholder", session: session)
+        do {
+            _ = try await insecureClient.optimize(text: original)
+            expect(false, "http exactEndpoint must throw")
+        } catch let error as ModelClientError {
+            guard case .invalidConfiguration = error else {
+                expect(false, "http exactEndpoint wrong error: \(error)"); return
+            }
+        } catch {
+            expect(false, "unexpected http exactEndpoint error: \(error)")
+        }
+        expect(RequestStub.state.bodies().isEmpty, "rejected exactEndpoint sends no request")
         session.invalidateAndCancel()
 
         // Empty input must fail before any request is attempted.
@@ -368,6 +398,7 @@ private final class RequestStubState: @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [Data] = []
     private var response = Data()
+    private var last: URLRequest?
 
     func reset(content: String = "HELLO", finishReason: String = "stop", refusal: String? = nil) {
         var message = ["content": content]
@@ -377,12 +408,15 @@ private final class RequestStubState: @unchecked Sendable {
         ])
         lock.withLock {
             recorded = []
+            last = nil
             response = data
         }
     }
     func responseBody() -> Data { lock.withLock { response } }
     func record(_ body: Data) { lock.withLock { recorded.append(body) } }
     func bodies() -> [Data] { lock.withLock { recorded } }
+    func recordRequest(_ request: URLRequest) { lock.withLock { last = request } }
+    var lastRequest: URLRequest? { lock.withLock { last } }
 }
 
 private final class RequestStub: URLProtocol {
@@ -404,6 +438,7 @@ private final class RequestStub: URLProtocol {
             }
         }
         Self.state.record(body)
+        Self.state.recordRequest(request)
         let response = HTTPURLResponse(url: request.url!, statusCode: 200,
                                        httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
         let responseBody = Self.state.responseBody()

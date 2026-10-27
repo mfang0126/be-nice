@@ -36,16 +36,26 @@ final class OptimizerController {
     }
 
     private func start(_ target: TriggerController.Target, token: UInt64) async {
-        let settings = SettingsStore().load()
-        guard let url = URL(string: settings.baseURL), ModelClient.endpoint(for: url) != nil,
-              !settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return fail("Set up a model in Settings first.", token: token)
-        }
+        let store = SettingsStore()
+        let provider = store.loadProvider()
         do {
-            let key = try await Task.detached { try CredentialStore.loadAPIKey() ?? "" }.value
+            let client: ModelClient
+            switch provider {
+            case .copilot:
+                // The user's own `gh` login; the token is read per app run and never stored.
+                let model = store.loadCopilotModel()
+                let ghToken = try await Task.detached { try CopilotAuth.token() }.value
+                client = ModelClient(config: CopilotAuth.config(model: model), apiKey: ghToken)
+            case .custom:
+                let settings = store.load()
+                guard let url = URL(string: settings.baseURL), ModelClient.endpoint(for: url) != nil,
+                      !settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    return fail("Set up a model in Settings first.", token: token)
+                }
+                let key = try await Task.detached { try CredentialStore.loadAPIKey() ?? "" }.value
+                client = ModelClient(config: ModelConfig(baseURL: url, model: settings.model), apiKey: key)
+            }
             guard generation == token, !Task.isCancelled else { return }
-            let client = ModelClient(config: ModelConfig(baseURL: url, model: settings.model),
-                                     apiKey: key)
             let core = WriteBackController(access: SystemTextTargetAccess(), client: client)
             let outcome = await core.prepare(target: WriteBackTarget(
                 pid: target.pid, bundleID: target.bundleID, element: TargetElement(target.element),
@@ -73,6 +83,14 @@ final class OptimizerController {
                 onCancel: { [weak self] in self?.cancelPreview(returnToTarget: true) })
         } catch {
             guard !Task.isCancelled else { return }
+            // A 401 from Copilot means the `gh` login expired; re-read it next time.
+            if provider == .copilot, case ModelClientError.http(status: 401, _) = error {
+                Task.detached { _ = try? CopilotAuth.token(refresh: true) }  // never block the main actor
+                return fail(CopilotAuth.AuthError.notLoggedIn.localizedDescription, token: token)
+            }
+            if provider == .copilot, case ModelClientError.http(let status, _) = error, status == 400 || status == 404 {
+                return fail("Copilot doesn't accept this model. Open Settings and pick another.", token: token)
+            }
             fail(error.localizedDescription, token: token)
         }
     }

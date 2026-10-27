@@ -11,6 +11,10 @@ private final class InMemoryDefaults: UserDefaults {
         values[defaultName] as? String
     }
 
+    override func data(forKey defaultName: String) -> Data? {
+        values[defaultName] as? Data
+    }
+
     override func dictionaryRepresentation() -> [String: Any] { values }
 }
 
@@ -19,6 +23,8 @@ private final class InMemoryDefaults: UserDefaults {
 ///
 ///     swiftc -swift-version 6 mac-app/Sources/benice/ModelClient.swift \
 ///         mac-app/Sources/benice/CredentialStore.swift \
+///         mac-app/Sources/benice/RewriteOptions.swift \
+///         mac-app/Sources/benice/CopilotAuth.swift \
 ///         mac-app/Sources/benice/SettingsWindow.swift \
 ///         mac-app/SettingsTests.swift -o /tmp/benice-settings-tests
 ///     /tmp/benice-settings-tests
@@ -178,6 +184,75 @@ struct SettingsTests {
                "failed Keychain write leaves UserDefaults unchanged")
         expect(savedKeys == ["sk-secret-1"],
                "failed Keychain write does not touch the credential store")
+
+        // MARK: Providers, Copilot model, style slots
+
+        let fresh = SettingsStore(defaults: InMemoryDefaults(), hasKey: { false }, saveKey: { _ in })
+        expect(fresh.loadProvider() == .copilot, "fresh install defaults to Copilot")
+        expect(fresh.loadCopilotModel() == "gpt-4o-mini", "fresh Copilot model is gpt-4o-mini")
+        fresh.saveCopilotModel("  gpt-4.1 \n")
+        expect(fresh.loadCopilotModel() == "gpt-4.1", "saved Copilot model is trimmed")
+        fresh.saveCopilotModel("   ")
+        expect(fresh.loadCopilotModel() == "gpt-4o-mini", "blank saved Copilot model falls back")
+        fresh.saveProvider(.custom)
+        expect(fresh.loadProvider() == .custom, "saved provider wins")
+
+        let legacyDefaults = InMemoryDefaults()
+        legacyDefaults.set("https://api.example.com", forKey: SettingsStore.baseURLKey)
+        let legacy = SettingsStore(defaults: legacyDefaults, hasKey: { false }, saveKey: { _ in })
+        expect(legacy.loadProvider() == .custom, "saved base URL without provider means custom")
+        legacy.saveProvider(.copilot)
+        expect(legacy.loadProvider() == .copilot, "saved provider beats saved base URL")
+        legacyDefaults.set("bogus", forKey: SettingsStore.providerKey)
+        expect(legacy.loadProvider() == .custom, "garbage provider falls back (base URL set)")
+        let garbageDefaults = InMemoryDefaults()
+        garbageDefaults.set("bogus", forKey: SettingsStore.providerKey)
+        let garbage = SettingsStore(defaults: garbageDefaults, hasKey: { false }, saveKey: { _ in })
+        expect(garbage.loadProvider() == .copilot, "garbage provider falls back (fresh)")
+
+        let presets = RewriteStyle.presets
+        expect(SettingsWindowController.slotsFromSelection(Array(presets.prefix(3))) == Array(presets.prefix(3)),
+               "three valid picks pass through")
+        expect(SettingsWindowController.slotsFromSelection(Array(presets.prefix(2))) == nil,
+               "two picks are rejected")
+        let blank = RewriteStyle(name: " ", instruction: "x")
+        expect(SettingsWindowController.slotsFromSelection([presets[0], presets[1], blank]) == nil,
+               "an invalid pick is rejected")
+        let custom = RewriteStyle(name: "Mine", instruction: "Short and warm")
+        expect(SettingsWindowController.slotChoices(for: presets[2]) == presets,
+               "preset slot adds no extra item")
+        expect(SettingsWindowController.slotChoices(for: custom) == presets + [custom],
+               "custom slot is appended")
+
+        let slots = [presets[0], custom, presets[2]]
+        var planKeys: [String] = []
+        let planDefaults = InMemoryDefaults()
+        let planStore = SettingsStore(defaults: planDefaults, hasKey: { false },
+                                      saveKey: { planKeys.append($0) })
+        try! planStore.apply(.copilot(model: "gpt-4.1"), slots: slots)
+        expect(planStore.loadProvider() == .copilot && planStore.loadCopilotModel() == "gpt-4.1",
+               "copilot save writes provider and model")
+        expect(planStore.loadSlots() == slots, "copilot save writes the slots")
+        expect(planKeys.isEmpty && planStore.load() == ModelSettings(baseURL: "", model: ""),
+               "copilot save needs and writes no API key or base URL")
+
+        // A custom draft that fails validation never becomes a plan, so nothing is saved.
+        let untouched = InMemoryDefaults()
+        let untouchedStore = SettingsStore(defaults: untouched, hasKey: { false }, saveKey: { _ in })
+        if case .success = draft(baseURL: "nope").validated() {
+            expect(false, "invalid custom draft validated")
+        } else {
+            expect(untouched.dictionaryRepresentation().isEmpty && untouchedStore.loadSlots() == RewriteStyle.defaultSlots,
+                   "custom validation failure saves nothing")
+        }
+        var badSaved = false
+        do { try untouchedStore.apply(.copilot(model: "m"), slots: [presets[0], blank, presets[1]]) } catch { badSaved = true }
+        expect(badSaved && untouched.dictionaryRepresentation().isEmpty, "invalid slots save nothing")
+        if case .success(let validated) = draft(apiKey: "k").validated() {
+            try! planStore.apply(.custom(validated), slots: slots)
+            expect(planStore.loadProvider() == .custom && planStore.load().model == "test-model"
+                   && planKeys == ["k"], "custom save writes provider, settings and key")
+        }
 
         if failures == 0 {
             print("SELFTEST PASS")
