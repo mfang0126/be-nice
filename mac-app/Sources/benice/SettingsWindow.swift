@@ -593,7 +593,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         isTesting = false
         setBusyUI(false)
         copilotModelPopup.menu?.removeAllItems()
-        applyProvider(store.loadProvider(), refresh: true)
+        // First run: Copilot is only preselected. No `gh` lookup or model request until the user clicks Test or Save.
+        let chosen = store.savedProvider() != nil
+        applyProvider(store.loadProvider(), refresh: chosen)
+        if !chosen { setCopilotStatus("Click Test to check your GitHub login and load the models.", isError: false) }
         beginPresenceCheck()
     }
 
@@ -697,7 +700,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switch selectedProvider {
         case .copilot:
             guard let model = selectedCopilotModelID else {
-                show("Pick a Copilot model first. Click Test to reload the list.", isError: true)
+                show("No Copilot model yet. Click Test to load the list.", isError: true)
                 return nil
             }
             return .copilot(model: model)
@@ -771,6 +774,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     /// One real rewrite with the unsaved settings; nothing is persisted.
     @objc private func testSettings() {
+        // No models yet (first run): Test first loads the list, which is the check the user asked for.
+        if !isBusy, selectedProvider == .copilot, selectedCopilotModelID == nil {
+            refreshCopilot()
+            return
+        }
         guard !isBusy, let slots = currentSlots(), let plan = currentPlan() else { return }
 
         let input: TestInput

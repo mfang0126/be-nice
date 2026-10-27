@@ -214,6 +214,11 @@ struct SettingsTests {
         garbageDefaults.set("bogus", forKey: SettingsStore.providerKey)
         let garbage = SettingsStore(defaults: garbageDefaults, hasKey: { false }, saveKey: { _ in })
         expect(garbage.loadProvider() == .copilot && garbage.savedProvider() == nil, "garbage provider falls back (fresh): nothing chosen")
+        let garbageWithURL = InMemoryDefaults()
+        garbageWithURL.set("bogus", forKey: SettingsStore.providerKey)
+        garbageWithURL.set("https://api.example.com", forKey: SettingsStore.baseURLKey)
+        expect(SettingsStore(defaults: garbageWithURL, hasKey: { false }, saveKey: { _ in }).savedProvider() == .custom,
+               "garbage provider with a saved base URL still means custom")
         garbage.saveProvider(.copilot)
         expect(garbage.savedProvider() == .copilot, "saving makes the choice explicit")
 
