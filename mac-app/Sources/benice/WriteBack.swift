@@ -233,6 +233,16 @@ public enum WriteBackAppSupport: String, Sendable, Equatable {
 /// `TriggerPolicy`. Only bundles whose write path was actually verified are
 /// allowed. VS Code/Insiders and terminal families are explicitly excluded.
 public enum WriteBackPolicy {
+    /// One node's child roles, as Slack's composer exposes them (S3 diagnosis 10-27):
+    /// emoji are AXImage, links AXLink, lists AXList (subrole AXContentList), and a
+    /// mention pill or other inline formatting splits a paragraph into several
+    /// AXStaticText runs. AXValue keeps none of that structure.
+    public static func childrenAreRich(_ roles: [String]) -> Bool {
+        let richRoles: Set<String> = ["AXImage", "AXLink", "AXButton", "AXList"]
+        return roles.contains { richRoles.contains($0) }
+            || roles.filter { $0 == "AXStaticText" }.count > 1
+    }
+
     public static let selectionBundleIDs: Set<String> = [
         "com.apple.TextEdit",
         "com.apple.Notes",
@@ -975,11 +985,11 @@ public struct SystemTextTargetAccess: TextTargetAccess {
         setAttribute(element, "AXFocused", kCFBooleanTrue)
     }
 
-    /// Bounded walk (depth 4, 300 nodes). Unknown or unreadable trees count as plain;
+    /// Bounded walk (depth 4, 300 nodes) applying `WriteBackPolicy.childrenAreRich` to
+    /// each node's children. Unknown or unreadable trees count as plain;
     /// the value/readback checks still guard the write itself.
     public func hasRichContent(_ element: TargetElement) -> Bool {
         guard let root = element.axElement else { return false }
-        let richRoles: Set<String> = ["AXImage", "AXLink", "AXButton"]
         var queue: [(AXUIElement, Int)] = [(root, 0)]
         var visited = 0
         while !queue.isEmpty, visited < 300 {
@@ -989,12 +999,14 @@ public struct SystemTextTargetAccess: TextTargetAccess {
             guard depth < 4,
                   AXUIElementCopyAttributeValue(node, "AXChildren" as CFString, &raw) == .success,
                   let children = raw as? [AXUIElement] else { continue }
+            var roles: [String] = []
             for child in children {
                 var role: CFTypeRef?
                 if AXUIElementCopyAttributeValue(child, "AXRole" as CFString, &role) == .success,
-                   let r = role as? String, richRoles.contains(r) { return true }
+                   let r = role as? String { roles.append(r) }
                 queue.append((child, depth + 1))
             }
+            if WriteBackPolicy.childrenAreRich(roles) { return true }
         }
         return false
     }
