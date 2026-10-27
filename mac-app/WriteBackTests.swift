@@ -696,6 +696,22 @@ struct WriteBackTests {
         }
 
         // 30. Slack drafts with emoji/mentions/links are never replaced.
+        // Child-role shapes recorded from real Slack composers (S3 diagnosis 10-27).
+        expect(WriteBackPolicy.childrenAreRich(["AXStaticText", "AXStaticText", "AXStaticText"]),
+               "mention pill (paragraph split into several text runs) is rich")
+        expect(WriteBackPolicy.childrenAreRich(["AXGroup", "AXGroup", "AXList", "AXGroup"]),
+               "ordered list (AXList) is rich")
+        expect(WriteBackPolicy.childrenAreRich(["AXStaticText", "AXImage"]), "emoji is rich")
+        expect(WriteBackPolicy.childrenAreRich(["AXStaticText", "AXLink"]), "link is rich")
+        expect(!WriteBackPolicy.childrenAreRich(["AXStaticText"]), "single text run is plain")
+        expect(!WriteBackPolicy.childrenAreRich(["AXGroup", "AXGroup", "AXGroup"]),
+               "plain paragraphs are plain")
+        expect(!WriteBackPolicy.childrenAreRich([]), "empty composer is plain")
+        expect(WriteBackPolicy.childrenAreRich(["AXGroup", "AXStaticText"],
+                                               subroles: ["AXStrongStyleGroup"]),
+               "bold at paragraph start (one text run + style group) is rich")
+        expect(WriteBackPolicy.childrenAreRich(["AXGroup"], subroles: ["AXCodeStyleGroup"]),
+               "fully inline-code paragraph is rich")
         do {
             let access = slackSetup()
             access.rich = true

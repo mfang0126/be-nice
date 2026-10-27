@@ -78,6 +78,9 @@ enum TriggerPolicy {
     ]
 
     static let webAreaRole = "AXWebArea"
+    /// AXParent walk cap. Slack composers (S3 diagnosis 10-27): channel AXWebArea
+    /// is the 16th parent, thread reply the 18th.
+    static let maxAncestorDepth = 24
     static let electronFixtureBundleID = "com.github.Electron"
     static let electronFixtureWindowTitle = "be-nice AX test target"
 
@@ -208,7 +211,6 @@ private enum TriggerAX {
 
     static let callTimeout: Float = 0.15
     static let snapshotDeadline: TimeInterval = 0.6
-    static let maxAncestorDepth = 16  // Slack composer sits 10 levels below AXWebArea
 
     static func capture(pid: pid_t, bundleID: String) -> Snapshot? {
         guard AXIsProcessTrusted(), !IsSecureEventInputEnabled() else { return nil }
@@ -267,7 +269,7 @@ private enum TriggerAX {
                                       deadline: TimeInterval) -> [String] {
         var roles: [String] = []
         var current = element
-        for _ in 0..<maxAncestorDepth {
+        for _ in 0..<TriggerPolicy.maxAncestorDepth {
             guard let raw = copyAttribute(current, "AXParent", deadline: deadline),
                   CFGetTypeID(raw) == AXUIElementGetTypeID() else { break }
             let parent = raw as! AXUIElement

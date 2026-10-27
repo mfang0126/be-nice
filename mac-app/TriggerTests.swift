@@ -55,6 +55,19 @@ struct TriggerTests {
         expect(decision("com.tinyspeck.slackmacgap", "AXTextArea", ancestors: slackDeep)
                 == .show(.wholeValue),
                "Slack composer with AXWebArea at depth 10 -> whole value")
+        // Real parent chains (S3 diagnosis 10-27), truncated as the AX walk does.
+        for (name, depth) in [("channel", 16), ("thread reply", 18)] {
+            let chain = Array(repeating: "AXGroup", count: depth - 1) + ["AXWebArea"]
+            expect(decision("com.tinyspeck.slackmacgap", "AXTextArea",
+                            ancestors: Array(chain.prefix(TriggerPolicy.maxAncestorDepth)))
+                    == .show(.wholeValue),
+                   "Slack \(name) composer with AXWebArea as parent \(depth) -> whole value")
+        }
+        let beyondCap = Array(repeating: "AXGroup", count: TriggerPolicy.maxAncestorDepth) + ["AXWebArea"]
+        expect(decision("com.tinyspeck.slackmacgap", "AXTextArea",
+                        ancestors: Array(beyondCap.prefix(TriggerPolicy.maxAncestorDepth)))
+                == .hide(.outsideWebContent),
+               "Slack AXWebArea beyond the 24-level walk cap is hidden")
         expect(decision("com.tinyspeck.slackmacgap", "AXTextArea",
                         ancestors: Array(repeating: "AXGroup", count: 9))
                 == .hide(.outsideWebContent),

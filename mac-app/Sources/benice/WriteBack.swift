@@ -62,7 +62,7 @@ public enum WriteBackFailure: Error, Sendable, Equatable {
     /// The read-back saw a third value or could not read it. A write may have
     /// occurred. Deliberately carries no captured document text.
     case writeUnexpected
-    /// Slack draft contains emoji, mentions, links or other non-text content that
+    /// Slack draft contains emoji, mentions, links, lists, formatting or other non-text content that
     /// a plain-text replace would drop; only copying is offered.
     case richContent
 
@@ -78,7 +78,7 @@ public enum WriteBackFailure: Error, Sendable, Equatable {
         case .noFrontmostApp: return "Slack isn't in front. Switch back to Slack and try again."
         case .noFocusedElement: return "Click into the Slack message box and try again."
         case .secureField: return "Can't read a password field."
-        case .richContent: return "This draft has emoji, mentions or links that a replace would drop."
+        case .richContent: return "This draft has emoji, mentions, links, lists or formatting that a replace would drop."
         case .notTextTarget: return "That isn't a text box. Click into the Slack message box and try again."
         case .valueUnavailable: return "Couldn't read the draft. Click into the message box and try again."
         case .selectionUnavailable: return "Couldn't read the selection. Click into the message box and try again."
@@ -233,6 +233,20 @@ public enum WriteBackAppSupport: String, Sendable, Equatable {
 /// `TriggerPolicy`. Only bundles whose write path was actually verified are
 /// allowed. VS Code/Insiders and terminal families are explicitly excluded.
 public enum WriteBackPolicy {
+    /// One node's child roles, as Slack's composer exposes them (S3 diagnosis 10-27):
+    /// emoji are AXImage, links AXLink, lists AXList (subrole AXContentList), and a
+    /// mention pill or other inline formatting splits a paragraph into several
+    /// AXStaticText runs. Bold/italic/code runs are AXGroup with a "...StyleGroup"
+    /// subrole (AXStrongStyleGroup, AXCodeStyleGroup), so a run at a paragraph's
+    /// start or end, or a fully formatted paragraph, is caught by subrole.
+    /// AXValue keeps none of that structure.
+    public static func childrenAreRich(_ roles: [String], subroles: [String] = []) -> Bool {
+        let richRoles: Set<String> = ["AXImage", "AXLink", "AXButton", "AXList"]
+        return roles.contains { richRoles.contains($0) }
+            || roles.filter { $0 == "AXStaticText" }.count > 1
+            || subroles.contains { $0.hasSuffix("StyleGroup") }
+    }
+
     public static let selectionBundleIDs: Set<String> = [
         "com.apple.TextEdit",
         "com.apple.Notes",
@@ -975,11 +989,11 @@ public struct SystemTextTargetAccess: TextTargetAccess {
         setAttribute(element, "AXFocused", kCFBooleanTrue)
     }
 
-    /// Bounded walk (depth 4, 300 nodes). Unknown or unreadable trees count as plain;
+    /// Bounded walk (depth 4, 300 nodes) applying `WriteBackPolicy.childrenAreRich` to
+    /// each node's children. Unknown or unreadable trees count as plain;
     /// the value/readback checks still guard the write itself.
     public func hasRichContent(_ element: TargetElement) -> Bool {
         guard let root = element.axElement else { return false }
-        let richRoles: Set<String> = ["AXImage", "AXLink", "AXButton"]
         var queue: [(AXUIElement, Int)] = [(root, 0)]
         var visited = 0
         while !queue.isEmpty, visited < 300 {
@@ -989,12 +1003,18 @@ public struct SystemTextTargetAccess: TextTargetAccess {
             guard depth < 4,
                   AXUIElementCopyAttributeValue(node, "AXChildren" as CFString, &raw) == .success,
                   let children = raw as? [AXUIElement] else { continue }
+            var roles: [String] = []
+            var subroles: [String] = []
             for child in children {
                 var role: CFTypeRef?
                 if AXUIElementCopyAttributeValue(child, "AXRole" as CFString, &role) == .success,
-                   let r = role as? String, richRoles.contains(r) { return true }
+                   let r = role as? String { roles.append(r) }
+                var subrole: CFTypeRef?
+                if AXUIElementCopyAttributeValue(child, "AXSubrole" as CFString, &subrole) == .success,
+                   let r = subrole as? String { subroles.append(r) }
                 queue.append((child, depth + 1))
             }
+            if WriteBackPolicy.childrenAreRich(roles, subroles: subroles) { return true }
         }
         return false
     }
