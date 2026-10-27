@@ -62,8 +62,8 @@ public enum WriteBackFailure: Error, Sendable, Equatable {
     /// The read-back saw a third value or could not read it. A write may have
     /// occurred. Deliberately carries no captured document text.
     case writeUnexpected
-    /// Slack draft contains emoji, mentions, links, lists, formatting or other non-text content that
-    /// a plain-text replace would drop; only copying is offered.
+    /// Slack draft contains emoji, mentions, links, lists, formatting, line breaks without a blank
+    /// line, or other structure that a plain-text replace would drop or change; only copying is offered.
     case richContent
 
     /// User-facing, short. Never includes captured document text.
@@ -78,7 +78,7 @@ public enum WriteBackFailure: Error, Sendable, Equatable {
         case .noFrontmostApp: return "Slack isn't in front. Switch back to Slack and try again."
         case .noFocusedElement: return "Click into the Slack message box and try again."
         case .secureField: return "Can't read a password field."
-        case .richContent: return "This draft has emoji, mentions, links, lists or formatting that a replace would drop."
+        case .richContent: return "This draft has emoji, mentions, links, lists, formatting or line breaks that a replace would change."
         case .notTextTarget: return "That isn't a text box. Click into the Slack message box and try again."
         case .valueUnavailable: return "Couldn't read the draft. Click into the message box and try again."
         case .selectionUnavailable: return "Couldn't read the selection. Click into the message box and try again."
@@ -245,6 +245,19 @@ public enum WriteBackPolicy {
         return roles.contains { richRoles.contains($0) }
             || roles.filter { $0 == "AXStaticText" }.count > 1
             || subroles.contains { $0.hasSuffix("StyleGroup") }
+    }
+
+    /// The composer's own children, one per paragraph: whether `setValue(AXValue)`
+    /// writes back the same layout. AXValue joins text paragraphs with a single "\n"
+    /// and omits empty ones, and Slack turns each written "\n" into a new paragraph
+    /// plus one empty paragraph (S3 10-27, 6.5 f2). So only "text (empty text)*" can
+    /// be restored; Shift+Return lines (adjacent text paragraphs), double blank
+    /// lines and leading/trailing empty lines cannot. Unread trees count as restorable.
+    public static func paragraphsRestorable(_ roles: [String], subroles: [String]) -> Bool {
+        guard !roles.isEmpty, roles.count == subroles.count,
+              roles.allSatisfy({ $0 == "AXGroup" }) else { return true }
+        let empty = subroles.map { $0 == "AXEmptyGroup" }
+        return empty.count % 2 == 1 && empty.enumerated().allSatisfy { $0.element == ($0.offset % 2 == 1) }
     }
 
     public static let selectionBundleIDs: Set<String> = [
@@ -990,7 +1003,8 @@ public struct SystemTextTargetAccess: TextTargetAccess {
     }
 
     /// Bounded walk (depth 4, 300 nodes) applying `WriteBackPolicy.childrenAreRich` to
-    /// each node's children. Unknown or unreadable trees count as plain;
+    /// each node's children, and `paragraphsRestorable` to the composer's own children.
+    /// Unknown or unreadable trees count as plain;
     /// the value/readback checks still guard the write itself.
     public func hasRichContent(_ element: TargetElement) -> Bool {
         guard let root = element.axElement else { return false }
@@ -1010,11 +1024,12 @@ public struct SystemTextTargetAccess: TextTargetAccess {
                 if AXUIElementCopyAttributeValue(child, "AXRole" as CFString, &role) == .success,
                    let r = role as? String { roles.append(r) }
                 var subrole: CFTypeRef?
-                if AXUIElementCopyAttributeValue(child, "AXSubrole" as CFString, &subrole) == .success,
-                   let r = subrole as? String { subroles.append(r) }
+                subroles.append(AXUIElementCopyAttributeValue(child, "AXSubrole" as CFString, &subrole) == .success
+                    ? (subrole as? String ?? "") : "")
                 queue.append((child, depth + 1))
             }
             if WriteBackPolicy.childrenAreRich(roles, subroles: subroles) { return true }
+            if depth == 0, !WriteBackPolicy.paragraphsRestorable(roles, subroles: subroles) { return true }
         }
         return false
     }

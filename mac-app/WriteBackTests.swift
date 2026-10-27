@@ -712,6 +712,20 @@ struct WriteBackTests {
                "bold at paragraph start (one text run + style group) is rich")
         expect(WriteBackPolicy.childrenAreRich(["AXGroup"], subroles: ["AXCodeStyleGroup"]),
                "fully inline-code paragraph is rich")
+        // Paragraph layouts recorded in S3 6.4/6.5: only "text (empty text)*" survives setValue.
+        let p = "AXGroup", e = "AXEmptyGroup"
+        func restorable(_ subroles: [String]) -> Bool {
+            WriteBackPolicy.paragraphsRestorable(Array(repeating: p, count: subroles.count), subroles: subroles)
+        }
+        expect(restorable([""]), "single paragraph is restorable")
+        expect(restorable(["", e, "", e, ""]), "paragraphs with one blank line each are restorable")
+        expect(!restorable(["", "", ""]), "Shift+Return lines (adjacent paragraphs) are not restorable")
+        expect(!restorable(["", e, e, ""]), "double blank line is not restorable")
+        expect(!restorable(["", e]), "trailing empty line is not restorable")
+        expect(!restorable([e, ""]), "leading empty line is not restorable")
+        expect(WriteBackPolicy.paragraphsRestorable([], subroles: []), "unread tree counts as restorable")
+        expect(WriteBackPolicy.paragraphsRestorable([p, "AXList"], subroles: ["", "AXContentList"]),
+               "non-paragraph children are left to childrenAreRich")
         do {
             let access = slackSetup()
             access.rich = true

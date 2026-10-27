@@ -171,3 +171,48 @@ review 的推断成立：e1–e4 每个节点下最多一个直接 AXStaticText�
 - 单独成段的提及胶囊（一段里只有 `@Full Name`）只有一个 AXStaticText，没有独立角色或 subrole，会被当成纯文本；替换会丢胶囊，撤销后是纯文本 `@Full Name`，Slack 会重新识别成提及（见 D4）。
 
 清理：频道、线程输入框已清空（AX 读回为空）；DM 未碰（侧栏 “Drafts & sent 1” 不变）；`~/Applications/.be-nice-install.*` 在 debug-status = 0 后删除；未发送任何消息。
+
+## 7. 修复 C：Shift+Return 多行草稿（21:32–21:40，分支 `mfang0126/be-nice-fix-linebreaks`，基于 main 0afe95f）
+
+### 7.1 原因
+
+Slack 走整篇写入：替换是 `setValue(建议)`，撤销是 `setValue(原 AXValue)`（`WriteBack.swift` apply/undo），不粘贴、不发按键。
+- AXValue 用单个 `\n` 连接有字的段落，空段落不出现。
+- Slack 把写入的每个 `\n` 变成“新段落 + 一个空段落”，也就是一行空行。7.3 b 用 setValue 写单 `\n` 的三段，截图有空行，这一点已再次确认。
+
+所以 setValue 只能还原“段 (空段 段)*”这种结构：
+- Shift+Return 的行是相邻段落，中间没有空段（6.4 b），无法还原，撤销后会多出空行（6.5 f2）。
+- 双空行、段首空行、段尾空行也无法还原。
+- 6.4 a 的单空行分段能还原，只是凑巧和 setValue 的结果一致。
+
+### 7.2 修法（复制降级，不放宽任何安全检查，不碰剪贴板，不发按键）
+
+- 新增 `WriteBackPolicy.paragraphsRestorable(roles, subroles:)`，只看输入框的直接子节点（`hasRichContent` 遍历的第 0 层）。规则：全部是 AXGroup，并且按“段、`AXEmptyGroup`、段……”交替，首尾都是段。不符合就判为 `.richContent`，只给 Copy rewrite。预览前、替换前都会检查。subrole 数组改成和 role 一一对应（没有 subrole 记 `""`）。读不到的树按可还原处理，与原规则一致。
+- 状态文案改为 “This draft has emoji, mentions, links, lists, formatting or line breaks that a replace would change.”
+- PLAN 第 22 行允许“结构无法保证时只给预览/复制”。单行和单空行分段仍然直接替换。
+- 单测：WriteBackTests 第 30 组新加 8 条。旧行为下（scratch worktree 换回 HEAD 源码，规则恒为 true）Shift+Return、双空行、段首空行、段尾空行 4 条失败；另 4 条是回归保护，新旧代码都通过。scratch worktree 已删除。`run-tests.sh` ALL PASS。
+
+### 7.3 实测（重装开发版，debug-status = 0，频道 #all-mingfangtech，截图 + AX 读回）
+
+| # | 位置 | 草稿 | 入口 | 替换后 | 撤销后 | 结论 |
+|---|---|---|---|---|---|---|
+| a | 频道 | Shift+Return 三行（逐字输入，截图无空行） | **Copy rewrite**，显示新文案 | — | — | 通过（草稿未改） |
+| b | 频道 | 三段单空行（setValue 单 `\n`，截图有空行） | Replace with Polite。Polite 卡手动改成三行再替换 | 截图：三段，每段之间一行空行，和原结构一致；AXValue 等于卡片内容 | 截图：三段单空行，与替换前一致；AXValue 逐字一致 | 通过 |
+| b′ | 频道 | 同上（b 的结果再改写一次，模型给了单行） | Replace with Polite | 单行 | 恢复三段单空行（截图） | 通过 |
+| c | 频道 | 单行 `[be-nice test] can you check the build before lunch` | Replace with Polite | `[be-nice test] Could you please check the build before lunch?` | 逐字一致，截图单行 | 通过 |
+| d | 线程 | 单行 `[be-nice test] Thanks, I will look at it after lunch.` | Replace with Polite | `[be-nice test] Thank you. I will review it after lunch.`（频道框为空） | 逐字一致，截图单行 | 通过 |
+| d2 | 线程 | Shift+Return 两行 | **Copy rewrite**，显示新文案 | — | — | 通过 |
+
+Undo 走状态胶囊：先点 Slack 的 Messages 标签让输入框失焦，再绑定胶囊点 Undo。
+
+### 7.4 U+2028 探测（只做证据，不改代码）
+
+在频道输入框用 LCU setValue 写入 `[be-nice test] u2028 line one` + U+2028 + `line two` + U+2028 + `line three`，未发送。
+- **截图**：三行紧挨着，没有空行，和 Shift+Return 看起来一样。
+- **结构**：be-nice 对这条草稿给 Copy rewrite，说明子树是相邻段落、中间没有空段，和 Shift+Return 相同。
+- **AXValue**：读回 `…line one\nline two\nline three`。状态字符串里查不到 U+2028，换行是普通 `\n`。也就是说，Slack 编辑器在写入时已经把 U+2028 转成段落分隔，输入框里不再留这个字符。
+- **会发出去的内容**：从输入框判断，它的模型和 Shift+Return 草稿完全一样（相邻段落），所以发送的应是普通换行，不含 U+2028。这是推断，没有真的发送。
+
+**结论：以后的替换和撤销可以保留软换行。** 写入前把字符串按原结构编码：相邻段落之间写 U+2028，单空行写 `\n`。Slack 写入后的结构和原草稿一致，AXValue 仍然读回 `\n`，现有的读回比对不用改。撤销要按捕获时的段落结构编码原文。替换要决定建议里的单个 `\n` 是软换行还是空行，建议沿用原草稿的风格。要做到这些，需要在 capture 时记下段落结构，并在 Slack 写入层做编码，属于新功能，按 AGENTS 先写进 PLAN。还需要实测：双空行（`\n` 加 U+2028？）、段首/段尾空行、线程输入框、发出后的消息（需用户授权才能发送）。
+
+清理：频道、线程输入框已清空（AX 读回为空）；DM 未碰（侧栏 “Drafts & sent 1” 不变）；`~/Applications/.be-nice-install.*` 在 debug-status = 0 后删除；未发送任何消息。GUI 使用时段 21:36–21:39。
