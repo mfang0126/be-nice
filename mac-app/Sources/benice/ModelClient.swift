@@ -197,8 +197,10 @@ public struct ModelClient: Sendable {
         integer id and a text string. The id is the number of the requested style \
         that the text follows. Return one entry per requested style, each id used \
         at most once, with no blank text. Each text must be a complete rewrite in \
-        its style. Return distinct rewrites; fewer entries than styles is fine, \
-        never pad. Do not include markdown fences, explanations, or extra fields.
+        its style. Make the rewrites clearly different from each other in sentence \
+        structure, word choice and length, so each style is visibly distinct while the \
+        meaning stays the same. Return distinct rewrites; fewer entries than styles is \
+        fine, never pad. Do not include markdown fences, explanations, or extra fields.
         """
 
     static let rewriteOneSystemPrompt = """

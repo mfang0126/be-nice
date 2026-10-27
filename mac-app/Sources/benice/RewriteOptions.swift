@@ -11,12 +11,18 @@ public struct RewriteStyle: Codable, Equatable, Sendable {
     }
 
     public static let presets: [RewriteStyle] = [
-        RewriteStyle(name: "Direct", instruction: "Lead with the point"),
-        RewriteStyle(name: "Friendly", instruction: "Relaxed, not stiff"),
-        RewriteStyle(name: "Clear", instruction: "One idea per sentence"),
-        RewriteStyle(name: "Shorter", instruction: "Same message, half the words"),
-        RewriteStyle(name: "Formal", instruction: "For clients and leadership"),
+        RewriteStyle(name: "Direct", instruction: "Lead with the point, no hedging or filler"),
+        RewriteStyle(name: "Friendly", instruction: "Warm and conversational, like talking to a colleague"),
+        RewriteStyle(name: "Clear", instruction: "Plain words, short sentences, one idea each"),
+        RewriteStyle(name: "Shorter", instruction: "Same message, half the words, only what is needed"),
+        RewriteStyle(name: "Formal", instruction: "Professional tone for clients and leadership"),
         RewriteStyle(name: "Polished English", instruction: "Translate and tidy into English"),
+    ]
+
+    /// Preset wording from earlier builds; slots saved with it are upgraded to the current wording.
+    static let retiredInstructions = [
+        "Direct": "Lead with the point", "Friendly": "Relaxed, not stiff", "Clear": "One idea per sentence",
+        "Shorter": "Same message, half the words", "Formal": "For clients and leadership",
     ]
 
     public static let defaultSlots = Array(presets.prefix(3))
@@ -31,7 +37,10 @@ enum StyleSlots {
         guard let data = defaults.data(forKey: key),
               let slots = try? JSONDecoder().decode([RewriteStyle].self, from: data),
               slots.count == 3, slots.allSatisfy(isValid) else { return RewriteStyle.defaultSlots }
-        return slots
+        return slots.map { slot in
+            RewriteStyle.presets.first { $0.name == slot.name && RewriteStyle.retiredInstructions[slot.name] == slot.instruction }
+                ?? slot
+        }
     }
 
     static func save(_ slots: [RewriteStyle], _ defaults: UserDefaults = .standard) {

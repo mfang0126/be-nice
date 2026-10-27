@@ -149,11 +149,42 @@ struct RewriteWindowTests {
         }
         let panel = card(0).superview!.superview!.superview!.superview!
         expect(root.bounds.contains(panel.convert(panel.bounds, to: root)), "small-screen panel stays within window")
+        // Anchored: the panel sits on the field's bottom edge and stays on screen at the edges.
+        let big = NSRect(x: 0, y: 0, width: 1600, height: 1000)
+        for field in [NSRect(x: 600, y: 120, width: 400, height: 90), NSRect(x: 1500, y: 5, width: 90, height: 40)] {
+            controller.present(original: "Synthetic original", appName: "Fixture", options: options,
+                               screenFrame: big, anchor: field, onSubmit: { _ in }, onCancel: {})
+            controller.window!.contentView!.layoutSubtreeIfNeeded()
+            let root2 = controller.window!.contentView!
+            let panel2 = card(0).superview!.superview!.superview!.superview!
+            let box = panel2.convert(panel2.bounds, to: root2)
+            expect(root2.bounds.contains(box), "anchored panel stays on screen")
+            expect(abs(box.width - 1120) < 1, "anchored panel keeps its width at the edges")
+            if field.minY > 100 {
+                let bottom = box.minY
+                expect(abs(bottom - field.minY) < 2 && abs(box.midX - field.midX) < 2,
+                       "anchored panel sits on the field's bottom edge, centred on it")
+            }
+        }
+        // Low and high fields, and a screen whose origin is not zero.
+        let offsetScreen = NSRect(x: -1600, y: 200, width: 1600, height: 1000)
+        for (frameUnderTest, field) in [(big, NSRect(x: 600, y: 400, width: 400, height: 90)),
+                                        (offsetScreen, NSRect(x: -1000, y: 500, width: 400, height: 90))] {
+            controller.present(original: "Synthetic original", appName: "Fixture", options: options,
+                               screenFrame: frameUnderTest, anchor: field, onSubmit: { _ in }, onCancel: {})
+            controller.window!.contentView!.layoutSubtreeIfNeeded()
+            let root3 = controller.window!.contentView!
+            let box = card(0).superview!.superview!.superview!.superview!.convert(
+                card(0).superview!.superview!.superview!.superview!.bounds, to: root3)
+            expect(abs(box.minY - (field.minY - frameUnderTest.minY)) < 2
+                   && abs(box.midX - (field.midX - frameUnderTest.minX)) < 2,
+                   "anchored panel follows the field on a higher field and an offset screen")
+        }
         // Accessibility, card keyboard/mouse paths and IME safety.
         present()
         expect(card(0).accessibilityRole() == .radioButton, "card exposes radio button role")
         expect((card(0).accessibilityValue() as? Int) == 1 && (card(1).accessibilityValue() as? Int) == 0, "card value reflects selection")
-        expect((card(1).accessibilityLabel() ?? "").contains("Friendly") && (card(1).accessibilityLabel() ?? "").contains("Relaxed"), "card label is style plus hint")
+        expect((card(1).accessibilityLabel() ?? "").contains("Friendly") && (card(1).accessibilityLabel() ?? "").contains("Warm"), "card label is style plus hint")
         pick(2)
         expect((card(2).accessibilityValue() as? Int) == 1 && (card(1).accessibilityValue() as? Int) == 0, "value refreshes on selection change")
         _ = controller.window!.makeFirstResponder(card(1))

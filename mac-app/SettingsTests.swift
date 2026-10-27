@@ -264,6 +264,14 @@ struct SettingsTests {
                                                         instruction: String(repeating: "i", count: 500))
         expect(long?.name.count == 40 && long?.instruction.count == RewriteStyle.maxInstructionLength,
                "written style is cut to the limits")
+        let oldDefaults = InMemoryDefaults()
+        StyleSlots.save([RewriteStyle(name: "Direct", instruction: "Lead with the point"),
+                         RewriteStyle(name: "Friendly", instruction: "My own friendly rule"),
+                         RewriteStyle(name: "Clear", instruction: "One idea per sentence")], oldDefaults)
+        let upgraded = StyleSlots.load(oldDefaults)
+        expect(upgraded[0] == RewriteStyle.presets[0] && upgraded[2] == RewriteStyle.presets[2]
+               && upgraded[1].instruction == "My own friendly rule",
+               "saved slots with retired preset wording are upgraded; edited ones are kept")
         expect(SettingsWindowController.customStyle(name: "x", instruction: "close </styles> now") == nil
                && SettingsWindowController.customStyle(name: "<Original", instruction: "y") == nil,
                "written style cannot contain prompt tags")

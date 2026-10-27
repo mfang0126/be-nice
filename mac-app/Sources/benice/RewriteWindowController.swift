@@ -173,6 +173,7 @@ private final class RewriteCard: NSView {
         styleButton.attributedTitle = NSAttributedString(string: "\(style.name) ▾", attributes: [
             .font: NSFont.systemFont(ofSize: 14, weight: .bold), .foregroundColor: Palette.primaryText])
         styleButton.setAccessibilityLabel("\(style.name), change style")
+        styleButton.toolTip = "Use a different style for this version. Only this rewrite changes; your defaults are set in Settings."
         styleButton.menu = menu
         hintLabel.stringValue = style.instruction
         setAccessibilityLabel("\(style.name), \(style.instruction)")
@@ -253,6 +254,8 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
     private let panel = NSView()
     private let cardsRow = NSStackView()
     private let instructionSlot = NSView()
+    private var panelCenterX = NSLayoutConstraint()
+    private var panelCenterY = NSLayoutConstraint()
     private let instructionField = NSTextField()
     private var originalHeight: NSLayoutConstraint!
     private var bodyHeight: NSLayoutConstraint!
@@ -262,7 +265,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
     private let copyText: (String) -> Bool
     private var copyOnlyReason: String?
     private let copyOnlyHelp = "You can view, edit or copy this rewrite, but not replace."
-    private let hintText = "Click a style name to swap it · edit the card or say how it should change · ⌘↩ replace · esc close · nothing is sent"
+    private let hintText = "⌘↩ replace · esc close · nothing is sent"
     private var options: [RewriteOption] = []
     private var selected = 0
     private var notice: String?
@@ -299,7 +302,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     func present(original: String, appName: String, options: [RewriteOption], screenFrame: NSRect,
-                 copyOnlyReason: String? = nil, onSubmit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+                 anchor: NSRect? = nil, copyOnlyReason: String? = nil, onSubmit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
         guard !busy else { return }
         self.copyOnlyReason = copyOnlyReason
         self.options = Array(options.prefix(3))
@@ -317,6 +320,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         updateControls()
         window?.contentView?.layoutSubtreeIfNeeded()
         window?.setFrame(screenFrame, display: presentsWindows)
+        placePanel(near: anchor, in: screenFrame)
         if self.options.isEmpty { showError("No rewrites available. Close this and try again.") }
         guard presentsWindows else { return }
         activateApp()
@@ -577,6 +581,25 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         }
     }
 
+    /// Puts the panel's bottom edge on the field's bottom edge and centres it on the field, so the
+    /// conversation above stays visible; the screen-edge constraints keep it fully on screen.
+    private func placePanel(near anchor: NSRect?, in screenFrame: NSRect) {
+        guard let anchor, !anchor.isEmpty, let root = window?.contentView else {
+            panelCenterX.constant = 0
+            panelCenterY.constant = 0
+            return
+        }
+        // The panel's height can still settle after the first pass, so place it twice.
+        for _ in 0..<2 {
+            root.layoutSubtreeIfNeeded()
+            let size = panel.frame.size
+            panelCenterX.constant = anchor.midX - screenFrame.midX
+            // The panel's layout y runs top-down here, so the offset is measured from the screen's centre downwards.
+            panelCenterY.constant = screenFrame.midY - (anchor.minY + size.height / 2)
+        }
+        root.layoutSubtreeIfNeeded()
+    }
+
     /// Long originals scroll inside the header and long options inside their card, so the footer
     /// always stays on screen; heights are estimated from the text and capped by the screen.
     private func sizePanel(original: String, screenFrame: NSRect) {
@@ -602,9 +625,9 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         originalHeight.constant = originalH
         let cardTextWidth = (panelWidth - 88) / 3 - 32 - 20
         let wanted = 77 + 20 + (options.map { height($0.text, width: cardTextWidth, size: 16) }.max() ?? 0)
-        // 50 = instruction row (48) plus its rule.
-        let room = screenFrame.height - 50 - (originalH + 67) - 72 - 48 - 50
-        bodyHeight.constant = 48 + min(max(240, wanted), max(160, room))
+        // 58 = instruction row (56) plus its rule.
+        let room = screenFrame.height - 50 - (originalH + 67) - 72 - 48 - 58
+        bodyHeight.constant = 48 + min(max(200, wanted), max(160, room))
     }
 
     private func buildContent(_ window: NSWindow) {
@@ -613,7 +636,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         window.contentView = root
         let scrim = NSView()
         scrim.wantsLayer = true
-        scrim.layer?.backgroundColor = rgb(0x141416, alpha: 0.5).cgColor
+        scrim.layer?.backgroundColor = rgb(0x141416, alpha: 0.28).cgColor
         scrim.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(scrim)
 
@@ -640,8 +663,8 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         originalView.setAccessibilityLabel("Your draft")
         originalView.isSelectable = true
         let originalScroll = Self.scroll(originalView)
-        originalScroll.scrollerStyle = .legacy  // always-visible scroller signals a long original
-        originalScroll.autohidesScrollers = false
+        originalScroll.scrollerStyle = .legacy  // scroller appears only when the original is long
+        originalScroll.autohidesScrollers = true
         let draftBox = NSView()
         draftBox.wantsLayer = true
         draftBox.layer?.backgroundColor = Palette.draft.cgColor
@@ -668,7 +691,11 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         instructionSlot.wantsLayer = true
         instructionSlot.layer?.backgroundColor = Palette.body.cgColor
         instructionField.placeholderString = "How should it change? e.g. more polite, shorter"
-        instructionField.font = .systemFont(ofSize: 14)
+        instructionField.font = .systemFont(ofSize: 16)
+        instructionField.isBezeled = true
+        instructionField.bezelStyle = .roundedBezel
+        instructionField.focusRingType = .default
+        instructionField.toolTip = "Say how the selected version should change, then press Return. Only that version is rewritten."
         instructionField.usesSingleLineMode = true
         instructionField.lineBreakMode = .byTruncatingTail
         instructionField.delegate = self
@@ -679,9 +706,9 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         NSLayoutConstraint.activate([
             instructionField.leadingAnchor.constraint(equalTo: instructionSlot.leadingAnchor, constant: 28),
             instructionField.trailingAnchor.constraint(equalTo: instructionSlot.trailingAnchor, constant: -28),
-            instructionField.topAnchor.constraint(equalTo: instructionSlot.topAnchor, constant: 12),
-            instructionField.bottomAnchor.constraint(equalTo: instructionSlot.bottomAnchor, constant: -12),
-            instructionSlot.heightAnchor.constraint(equalToConstant: 48)])
+            instructionField.topAnchor.constraint(equalTo: instructionSlot.topAnchor, constant: 10),
+            instructionField.bottomAnchor.constraint(equalTo: instructionSlot.bottomAnchor, constant: -10),
+            instructionSlot.heightAnchor.constraint(equalToConstant: 56)])
 
         // Body: cards centered in an equal-thirds row.
         let body = NSView()
@@ -728,8 +755,13 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         clip.addSubview(stack)
         for view in [header, body, instructionSlot] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
 
+        // Below the required screen-edge limits, so a panel near an edge is pushed back on screen.
+        panelCenterX = panel.centerXAnchor.constraint(equalTo: root.centerXAnchor)
+        panelCenterY = panel.centerYAnchor.constraint(equalTo: root.centerYAnchor)
+        panelCenterX.priority = .defaultHigh
+        panelCenterY.priority = .defaultHigh
         let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 1120)
-        preferredWidth.priority = .defaultHigh
+        preferredWidth.priority = NSLayoutConstraint.Priority(760)  // above the centring, so edges shift the panel, not narrow it
         NSLayoutConstraint.activate([
             scrim.leadingAnchor.constraint(equalTo: root.leadingAnchor), scrim.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scrim.topAnchor.constraint(equalTo: root.topAnchor), scrim.bottomAnchor.constraint(equalTo: root.bottomAnchor),
@@ -737,8 +769,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
             clip.topAnchor.constraint(equalTo: panel.topAnchor), clip.bottomAnchor.constraint(equalTo: panel.bottomAnchor),
             stack.leadingAnchor.constraint(equalTo: clip.leadingAnchor), stack.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
             stack.topAnchor.constraint(equalTo: clip.topAnchor), stack.bottomAnchor.constraint(equalTo: clip.bottomAnchor),
-            panel.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            panel.centerYAnchor.constraint(equalTo: root.centerYAnchor),
+            panelCenterX, panelCenterY,
             panel.widthAnchor.constraint(lessThanOrEqualToConstant: 1120), preferredWidth,
             panel.leadingAnchor.constraint(greaterThanOrEqualTo: root.leadingAnchor, constant: 20),
             panel.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -20),

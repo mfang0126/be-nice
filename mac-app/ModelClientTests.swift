@@ -181,7 +181,7 @@ struct ModelClientTests {
                "options wire: fixed system, style guide, styles, original")
         expect(optionsWire[1] == wireMessages[1], "style guide remains its own user message")
         expect(optionsWire[2]["role"] == "user"
-                && optionsWire[2]["content"]?.contains("<styles>\n1. Direct: Lead with the point\n2. Friendly: Relaxed, not stiff\n3. Clear: One idea per sentence\n</styles>") == true
+                && optionsWire[2]["content"]?.contains("<styles>\n1. Direct: Lead with the point, no hedging or filler\n2. Friendly: Warm and conversational, like talking to a colleague\n3. Clear: Plain words, short sentences, one idea each\n</styles>") == true
                 && optionsWire[2]["content"]?.contains("system rules take priority") == true,
                "styles are a numbered, delimited, subordinate user message")
         expect(optionsWire[3]["role"] == "user" && Array(optionsWire[3]["content"]!.utf8) == Array(exactOriginal.utf8),
@@ -192,7 +192,7 @@ struct ModelClientTests {
         for guide: String? in [nil, " \n"] {
             let m = try! ModelClient.optionsMessages(text: exactOriginal, styles: [styles[1]], styleGuide: guide)
             expect(m.count == 3 && m[0].content == ModelClient.optionsSystemPrompt
-                    && m[1].content.contains("<styles>\n1. Friendly: Relaxed, not stiff\n</styles>")
+                    && m[1].content.contains("<styles>\n1. Friendly: Warm and conversational, like talking to a colleague\n</styles>")
                     && m[2].content == exactOriginal, "absent style guide adds no message")
         }
         expectThrows(.invalidStyleGuide, {
@@ -280,7 +280,7 @@ struct ModelClientTests {
         var oneWire = (try! JSONSerialization.jsonObject(with: RequestStub.state.bodies()[0]) as! [String: Any])["messages"] as! [[String: String]]
         expect(oneWire.count == 4 && oneWire[0] == ["role": "system", "content": ModelClient.rewriteOneSystemPrompt]
                 && oneWire[1] == wireMessages[1]
-                && oneWire[2]["content"] == "<style>Formal: For clients and leadership</style>"
+                && oneWire[2]["content"] == "<style>Formal: Professional tone for clients and leadership</style>"
                 && oneWire[3]["content"] == "<original>\n\(original)\n</original>"
                 && oneWire.allSatisfy { !$0["content"]!.contains("ignored") },
                "no-instruction rewriteOne: style then original, current unused")
@@ -294,7 +294,7 @@ struct ModelClientTests {
         oneWire = (try! JSONSerialization.jsonObject(with: RequestStub.state.bodies()[0]) as! [String: Any])["messages"] as! [[String: String]]
         expect(oneWire.map { $0["content"]! } == [
             ModelClient.rewriteOneSystemPrompt,
-            "<style>Formal: For clients and leadership</style>",
+            "<style>Formal: Professional tone for clients and leadership</style>",
             "<original>\nCall me at 5pm.\n</original>",
             "<current>\nPlease call at 5pm.\n</current>",
             "<instruction>warmer</instruction>"
