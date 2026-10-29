@@ -51,21 +51,8 @@ final class OptimizerController {
             return
         }
         do {
-            let client: ModelClient
-            switch provider {
-            case .copilot:
-                // The user's own `gh` login; the token is read per app run and never stored.
-                let model = store.loadCopilotModel()
-                let ghToken = try await Task.detached { try CopilotAuth.token() }.value
-                client = ModelClient(config: CopilotAuth.config(model: model), apiKey: ghToken)
-            case .custom:
-                let settings = store.load()
-                guard let url = URL(string: settings.baseURL), ModelClient.endpoint(for: url) != nil,
-                      !settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    return fail("Set up a model in Settings first.", token: token)
-                }
-                let key = try await Task.detached { try CredentialStore.loadAPIKey() ?? "" }.value
-                client = ModelClient(config: ModelConfig(baseURL: url, model: settings.model), apiKey: key)
+            guard let client = try await Self.client(for: provider, store: store) else {
+                return fail("Set up a model in Settings first.", token: token)
             }
             guard generation == token, !Task.isCancelled else { return }
             let core = WriteBackController(access: SystemTextTargetAccess(), client: client)
@@ -108,8 +95,42 @@ final class OptimizerController {
         }
     }
 
+    /// The saved provider's client; nil when the custom model is incomplete.
+    nonisolated static func client(for provider: Provider, store: SettingsStore) async throws -> ModelClient? {
+        switch provider {
+        case .copilot:
+            // The user's own `gh` login; the token is read per app run and never stored.
+            let model = store.loadCopilotModel()
+            let ghToken = try await Task.detached { try CopilotAuth.token() }.value
+            return ModelClient(config: CopilotAuth.config(model: model), apiKey: ghToken)
+        case .custom:
+            let settings = store.load()
+            guard let url = URL(string: settings.baseURL), ModelClient.endpoint(for: url) != nil,
+                  !settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            let key = try await Task.detached { try CredentialStore.loadAPIKey() ?? "" }.value
+            return ModelClient(config: ModelConfig(baseURL: url, model: settings.model), apiKey: key)
+        }
+    }
+
+    /// No-Accessibility paths (Services, clipboard): same settings, client and style slots;
+    /// there is no picker, so the first slot's rewrite is used.
+    nonisolated static func firstRewrite(_ text: String) async throws -> String {
+        let store = SettingsStore()
+        guard let provider = store.savedProvider(),
+              let client = try await client(for: provider, store: store) else { throw HandoffError.needsSetup }
+        do {
+            guard let first = try await client.rewriteOptions(text: text, styles: StyleSlots.load()).first else {
+                throw ModelClientError.emptyInput
+            }
+            return first.text
+        } catch {
+            if provider == .copilot, dropExpiredToken(error) { throw CopilotAuth.AuthError.notLoggedIn }
+            throw error
+        }
+    }
+
     /// On a Copilot 401, forget the cached `gh` token so the next request re-reads it.
-    private static func dropExpiredToken(_ error: Error) -> Bool {
+    nonisolated private static func dropExpiredToken(_ error: Error) -> Bool {
         guard case ModelClientError.http(status: 401, _) = error else { return false }
         CopilotAuth.resetTokenCache()
         return true
