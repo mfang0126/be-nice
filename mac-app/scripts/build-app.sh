@@ -34,6 +34,8 @@ cp Support/Info.plist "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier com.benice.menubar.development' "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleName be-nice Development' "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName be-nice Development' "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Set :NSServices:0:NSPortName be-nice Development' "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Set :NSServices:0:NSMenuItem:default Rewrite with Be Nice (Dev)' "$APP/Contents/Info.plist"
 # Explicit leaf pin keeps the requirement independent of binary content.
 /usr/bin/codesign --force --sign "$HASH" --keychain "$KEYCHAIN" --timestamp=none \
     -r "=designated => identifier \"com.benice.menubar.development\" and certificate leaf = H\"$HASH\"" "$APP"

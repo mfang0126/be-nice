@@ -45,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var settingsController: SettingsWindowController?
     private var optimizerController: OptimizerController?
     private var triggerController: TriggerController?
+    private var noAXController: NoAXController?
     private var pollTimer: Timer?
     private var refreshGeneration = 0
     #if DEBUG
@@ -68,6 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             self?.optimizerController?.trigger(target)
         }
         triggerController = triggers
+        // Both no-Accessibility paths are always available; the shortcut only routes there when untrusted.
+        let noAX = NoAXController { try await OptimizerController.firstRewrite($0) }
+        noAXController = noAX
+        NSApp.servicesProvider = noAX
+        NSUpdateDynamicServices()
+        triggers.onShortcutWithoutAccessibility = { [weak self] in self?.noAXController?.rewriteClipboard() }
         triggers.start()
         updateShortcutMenu()
         updateStatusItem()
@@ -135,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         menu.addItem(status)
         statusMenuItem = status
 
-        let request = NSMenuItem(title: "Request Accessibility Access…",
+        let request = NSMenuItem(title: "Enable One-Click Mode (Accessibility)…",
                                  action: #selector(requestAccess), keyEquivalent: "")
         request.target = self
         menu.addItem(request)
@@ -183,7 +190,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard let triggerController else { return }
         switch triggerController.hotKeyStatus {
         case .registered:
-            shortcutMenuItem?.title = "Rewrite shortcut: \(TriggerController.HotKey.defaultShortcutDescription)"
+            let key = TriggerController.HotKey.defaultShortcutDescription
+            shortcutMenuItem?.title = AccessMode(trusted: tracker.state == .granted) == .accessibility
+                ? "Rewrite shortcut: \(key)"
+                : "Copy your draft, press \(key), then ⌘V"
         case .failed(let status):
             shortcutMenuItem?.title = "Shortcut unavailable (\(status)); use the floating dot"
         case .notStarted:
@@ -196,9 +206,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .granted:
             return "Accessibility: Granted"
         case .denied:
-            return "Accessibility: Not granted"
+            return "Clipboard mode — no Accessibility needed"
         case .revoked:
-            return "Accessibility: Revoked — re-enable in System Settings"
+            return "Accessibility revoked — using clipboard mode"
         }
     }
 
@@ -241,6 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         updateStatusItem()
         updateMenu()
+        updateShortcutMenu()
         #if DEBUG
         writeDebugPermissionStatus(trusted: trusted)
         #endif

@@ -489,6 +489,7 @@ final class TriggerController {
     /// The shell can surface `.failed` instead of leaving a silent no-op.
     private(set) var hotKeyStatus: HotKeyStatus = .notStarted
     var hotKeyAvailable: Bool { hotKeyStatus.isRegistered }
+    var onShortcutWithoutAccessibility: (() -> Void)?
 
     init(handler: @escaping Handler, hotKey: HotKey = .defaultShortcut) {
         self.handler = handler
@@ -657,6 +658,11 @@ final class TriggerController {
     }
 
     fileprivate func fireFromShortcut() {
+        // Without Accessibility the same shortcut runs the clipboard path (docs/design/no-ax-mode.md).
+        if !AXIsProcessTrusted() {
+            if isRunning, acceptTriggerTime() { onShortcutWithoutAccessibility?() }
+            return
+        }
         requestTrigger()
     }
 

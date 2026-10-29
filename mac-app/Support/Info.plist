@@ -28,5 +28,31 @@
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Rewrite with Be Nice</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>rewriteText</string>
+			<key>NSPortName</key>
+			<string>Be Nice</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+			</array>
+			<key>NSReturnTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+			</array>
+			<key>NSTimeout</key>
+			<string>60000</string>
+		</dict>
+	</array>
 </dict>
 </plist>
