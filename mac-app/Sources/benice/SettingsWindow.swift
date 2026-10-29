@@ -39,6 +39,22 @@ enum SettingsError: Error, Equatable, LocalizedError {
     }
 }
 
+enum SettingsField: Equatable {
+    case baseURL, model, apiKey
+}
+
+extension SettingsError {
+    /// The Custom field Settings moves focus to; a failed Keychain read is fixed by typing a key.
+    var field: SettingsField? {
+        switch self {
+        case .emptyBaseURL, .invalidBaseURL: .baseURL
+        case .emptyModel: .model
+        case .missingAPIKey, .keychainRead: .apiKey
+        case .save: nil
+        }
+    }
+}
+
 struct ValidatedSettings: Equatable {
     var settings: ModelSettings
     /// `nil` means "keep the key already stored in the Keychain".
@@ -146,6 +162,36 @@ struct SettingsStore: @unchecked Sendable {
         }
         defaults.set(validated.settings.baseURL, forKey: Self.baseURLKey)
         defaults.set(validated.settings.model, forKey: Self.modelKey)
+    }
+}
+
+// MARK: - Unsaved changes (pure, covered by SettingsTests)
+
+/// What Save would write for the selected provider. Comparing it with the state at the last
+/// load or save tells whether closing would lose edits. Fields of the other provider are left
+/// blank because Save does not write them.
+struct SettingsFormState: Equatable {
+    var provider: Provider
+    var copilotModel = ""
+    var baseURL = ""
+    var model = ""
+    var typedAPIKey = false
+    var styleNames: [String]
+    var styleInstructions: [String]
+
+    init(provider: Provider, copilotModel: String, baseURL: String, model: String, apiKey: String,
+         styleNames: [String], styleInstructions: [String]) {
+        self.provider = provider
+        self.styleNames = styleNames
+        self.styleInstructions = styleInstructions
+        switch provider {
+        case .copilot:
+            self.copilotModel = copilotModel
+        case .custom:
+            self.baseURL = baseURL
+            self.model = model
+            self.typedAPIKey = !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 }
 
@@ -313,6 +359,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var testGeneration = 0
     /// Drops stale Copilot model-list results; separate so a Keychain check cannot discard them.
     private var copilotGeneration = 0
+    /// The form as last loaded or saved; nil until the window first loads.
+    private var savedState: SettingsFormState?
+    /// Set by "Save" in the close prompt: the window closes once that save succeeds.
+    private var closeAfterSave = false
 
     init(store: SettingsStore = SettingsStore(), network: SettingsNetwork = .live) {
         self.store = store
@@ -353,9 +403,42 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Escape and the red close button must both be inert while saving.
+    /// Escape and the red close button must both be inert while saving. With unsaved
+    /// edits they ask Save / Don't Save / Cancel instead of dropping the edits.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        !isSaving
+        guard !isSaving, sender.attachedSheet == nil else { return false }
+        guard hasUnsavedChanges else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Save changes to Settings?"
+        alert.informativeText = "If you don't save, your changes are lost."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Don't Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: sender) { [weak self] response in
+            switch response {
+            case .alertFirstButtonReturn:
+                self?.closeAfterSave = true
+                self?.saveSettings()
+            case .alertSecondButtonReturn:
+                sender.close()  // close() does not ask windowShouldClose again
+            default:
+                break
+            }
+        }
+        return false
+    }
+
+    private var formState: SettingsFormState {
+        SettingsFormState(
+            provider: selectedProvider,
+            copilotModel: selectedCopilotModelID ?? store.loadCopilotModel(),
+            baseURL: baseURLField.stringValue, model: modelField.stringValue, apiKey: apiKeyField.stringValue,
+            styleNames: styleNameFields.map(\.stringValue),
+            styleInstructions: styleInstructionFields.map(\.stringValue))
+    }
+
+    private var hasUnsavedChanges: Bool {
+        savedState.map { $0 != formState } ?? false
     }
 
     // MARK: Pure helpers
@@ -501,7 +584,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Token and model list come off the main actor (`gh` is a subprocess).
-    static let modelsLoadedStatus = "Models loaded. Click Test again to send one test request."
+    static let modelsLoadedStatus = "Models loaded. Click Test to send one test request."
+
+    /// Until Copilot models are loaded the button only loads them, so it says so instead of "Test".
+    static func testButtonTitle(provider: Provider, hasModels: Bool) -> String {
+        provider == .copilot && !hasModels ? "Load models" : "Test"
+    }
 
     private func refreshCopilot(loadedByTest: Bool = false) {
         copilotGeneration &+= 1
@@ -509,6 +597,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let wanted = selectedCopilotModelID ?? store.loadCopilotModel()
         copilotModelPopup.menu?.removeAllItems()
         copilotModelPopup.isEnabled = false
+        updateButtonState()
         setCopilotStatus("Checking GitHub login…", isError: false)
 
         Task {
@@ -538,6 +627,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                     self.copilotModelPopup.selectItem(at: index)
                 }
                 self.copilotModelPopup.isEnabled = !self.isBusy
+                self.updateButtonState()
                 self.setCopilotStatus(loadedByTest ? Self.modelsLoadedStatus : "Using your GitHub login.", isError: false)
             }
         }
@@ -594,10 +684,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         isTesting = false
         setBusyUI(false)
         copilotModelPopup.menu?.removeAllItems()
-        // First run: Copilot is only preselected. No `gh` lookup or model request until the user clicks Test or Save.
+        // First run: Copilot is only preselected. Deliberately no `gh` lookup and no model request until the
+        // user clicks Load models (PLAN.md S3 privacy item: nothing runs before the user chooses a provider).
         let chosen = store.savedProvider() != nil
         applyProvider(store.loadProvider(), refresh: chosen)
-        if !chosen { setCopilotStatus("Click Test to check your GitHub login and load the models.", isError: false) }
+        if !chosen { setCopilotStatus("Click Load models to check your GitHub login and load the models.", isError: false) }
+        savedState = formState
         beginPresenceCheck()
     }
 
@@ -647,6 +739,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let enabled = !isBusy && !waitingForKeychain
         saveButton.isEnabled = enabled
         testButton.isEnabled = enabled
+        testButton.title = Self.testButtonTitle(provider: selectedProvider, hasModels: selectedCopilotModelID != nil)
     }
 
     private func setBusyUI(_ busy: Bool) {
@@ -701,7 +794,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switch selectedProvider {
         case .copilot:
             guard let model = selectedCopilotModelID else {
-                show("No Copilot model yet. Click Test to load the list.", isError: true)
+                show("No Copilot model yet. Click Load models to load the list.", isError: true)
                 return nil
             }
             return .copilot(model: model)
@@ -709,6 +802,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             switch validatedCustomDraft() {
             case .failure(let error):
                 show(error.localizedDescription, isError: true)
+                focus(error.field)
                 return nil
             case .success(let validated):
                 return .custom(validated)
@@ -722,11 +816,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .success(let slots): return slots
         case .failure(let problem):
             show(problem.message, isError: true)
+            if let row = problem.row, styleNameFields.indices.contains(row) {
+                window?.makeFirstResponder(problem.field == .instruction ? styleInstructionFields[row] : styleNameFields[row])
+            }
             return nil
         }
     }
 
+    /// Puts the cursor in the field a validation error is about.
+    private func focus(_ field: SettingsField?) {
+        let view: NSTextField? = switch field {
+        case .baseURL: baseURLField
+        case .model: modelField
+        case .apiKey: apiKeyField
+        case nil: nil
+        }
+        if let view { window?.makeFirstResponder(view) }
+    }
+
     @objc private func saveSettings() {
+        let closeWhenSaved = closeAfterSave
+        closeAfterSave = false
         guard !isBusy, let slots = currentSlots(), let plan = currentPlan() else { return }
 
         // Invalidate any in-flight presence result: the save outcome is
@@ -766,7 +876,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                     }
                     self.updateAPIKeyPlaceholder()
                 }
+                self.savedState = self.formState
                 self.show("Saved.", isError: false)
+                if closeWhenSaved { self.window?.close() }
             case .failed(let message):
                 self.show(message, isError: true)
             }
@@ -775,7 +887,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     /// One real rewrite with the unsaved settings; nothing is persisted.
     @objc private func testSettings() {
-        // No models yet (first run): Test first loads the list, which is the check the user asked for.
+        // No models yet (first run): the button reads "Load models" and only loads the list; nothing is sent to a model.
         if !isBusy, selectedProvider == .copilot, selectedCopilotModelID == nil {
             refreshCopilot(loadedByTest: true)
             return
@@ -789,6 +901,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .custom(let validated):
             guard let url = URL(string: validated.settings.baseURL) else {
                 show(SettingsError.invalidBaseURL.localizedDescription, isError: true)
+                focus(.baseURL)
                 return
             }
             input = .custom(ModelConfig(baseURL: url, model: validated.settings.model),

@@ -272,6 +272,18 @@ struct SettingsTests {
         expect(problem(["A", "B", "C"], ["x", "close </styles> now", "z"]) != nil
                && problem(["<Original", "B", "C"], ["x", "y", "z"]) != nil, "prompt tags rejected (even with spaces or other case)")
         expect(problem(["Polite", "polite", "C"], ["x", "y", "z"]) == "Give each style a different name.", "duplicate names rejected, any case")
+        func spot(_ n: [String], _ i: [String]) -> (Int?, StyleSlotError.Field?) {
+            if case .failure(let e) = rows(n, i) { return (e.row, e.field) } else { return (nil, nil) }
+        }
+        expect(spot(["A", "", "C"], ["x", "y", "z"]) == (1, .name), "an empty name points at that row's name")
+        expect(spot(["A", "B", "C"], ["x", "y", " "]) == (2, .instruction), "an empty instruction points at that row's instruction")
+        expect(spot(["<Original", "B", "C"], ["x", "y", "z"]) == (0, .name) && spot(["A", "B", "C"], ["x", "a\nb", "z"]) == (1, .instruction),
+               "a tag or line break points at the field that has it")
+        expect(spot(["A", "B", "a"], ["x", "y", "z"]) == (2, .name), "a duplicate name points at the later copy")
+        expect(SettingsError.emptyBaseURL.field == .baseURL && SettingsError.invalidBaseURL.field == .baseURL
+               && SettingsError.emptyModel.field == .model && SettingsError.missingAPIKey.field == .apiKey
+               && SettingsError.keychainRead("x").field == .apiKey && SettingsError.save("x").field == nil,
+               "each Custom error points at its field")
         let restored = InMemoryDefaults()
         StyleSlots.save([RewriteStyle(name: "A", instruction: "a"), RewriteStyle(name: "B", instruction: "b"),
                          RewriteStyle(name: "C", instruction: "c")], restored)
@@ -307,8 +319,26 @@ struct SettingsTests {
                "the former default trio moves to Polite / Shorter / Friendly")
 
         let hint = SettingsWindowController.modelsLoadedStatus
-        expect(hint.contains("Models loaded") && hint.contains("Test again") && hint.contains("one test request"),
-               "after the first Test loads models, the status says so and that Test again sends one request")
+        expect(hint.contains("Models loaded") && hint.contains("Click Test") && hint.contains("one test request"),
+               "after Load models, the status says that Test sends one request")
+        expect(SettingsWindowController.testButtonTitle(provider: .copilot, hasModels: false) == "Load models"
+               && SettingsWindowController.testButtonTitle(provider: .copilot, hasModels: true) == "Test"
+               && SettingsWindowController.testButtonTitle(provider: .custom, hasModels: false) == "Test",
+               "the button says Load models only while Copilot has no models")
+
+        func form(_ provider: Provider, copilot: String = "gpt-4o-mini", base: String = "https://a.example",
+                  key: String = "", names: [String] = ["A", "B", "C"]) -> SettingsFormState {
+            SettingsFormState(provider: provider, copilotModel: copilot, baseURL: base, model: "m", apiKey: key,
+                              styleNames: names, styleInstructions: ["x", "y", "z"])
+        }
+        expect(form(.copilot) == form(.copilot, base: "https://typed-then-left.example", key: "k"),
+               "Custom fields typed while Copilot is selected are not unsaved changes (Save does not write them)")
+        expect(form(.copilot) != form(.copilot, copilot: "gpt-4.1"), "a different Copilot model is an unsaved change")
+        expect(form(.custom) != form(.custom, base: "https://b.example") && form(.custom) != form(.custom, key: " k "),
+               "a changed base URL or a typed API key is an unsaved change")
+        expect(form(.custom, key: "  ") == form(.custom), "a blank API key field is not an unsaved change")
+        expect(form(.copilot) != form(.custom) && form(.copilot) != form(.copilot, names: ["A", "B", "D"]),
+               "switching provider or editing a style is an unsaved change")
 
         // The window is built but never shown; the store and network are fakes.
         _ = NSApplication.shared
@@ -321,6 +351,19 @@ struct SettingsTests {
         let buttons = views(window.contentView!).compactMap { $0 as? NSButton }
         expect(buttons.first { $0.title == "Save" }?.keyEquivalent == "",
                "Return in a field does not trigger Save")
+        expect(buttons.contains { $0.title == "Load models" } && !buttons.contains { $0.title == "Test" },
+               "first run with Copilot preselected shows Load models, not Test")
+        func field(_ label: String) -> NSTextField? {
+            views(window.contentView!).compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == label }
+        }
+        for (index, label) in ["1 (default)", "2", "3"].enumerated() {
+            field("Style \(label) name")?.stringValue = "Name \(index)"
+            field("Style \(label) instruction")?.stringValue = index == 1 ? "" : "Instruction"
+        }
+        buttons.first { $0.title == "Save" }?.performClick(nil)
+        let focused = (window.firstResponder as? NSText)?.delegate as? NSTextField
+        expect(focused != nil && focused === field("Style 2 instruction"),
+               "Save with an empty style 2 instruction puts the cursor in that field")
 
         if failures == 0 {
             print("SELFTEST PASS")
