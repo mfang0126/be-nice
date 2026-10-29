@@ -501,7 +501,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Token and model list come off the main actor (`gh` is a subprocess).
-    static let modelsLoadedStatus = "Models loaded. Click Test again to send one test request."
+    static let modelsLoadedStatus = "Models loaded. Click Test to send one test request."
+
+    /// Until Copilot models are loaded the button only loads them, so it says so instead of "Test".
+    static func testButtonTitle(provider: Provider, hasModels: Bool) -> String {
+        provider == .copilot && !hasModels ? "Load models" : "Test"
+    }
 
     private func refreshCopilot(loadedByTest: Bool = false) {
         copilotGeneration &+= 1
@@ -509,6 +514,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let wanted = selectedCopilotModelID ?? store.loadCopilotModel()
         copilotModelPopup.menu?.removeAllItems()
         copilotModelPopup.isEnabled = false
+        updateButtonState()
         setCopilotStatus("Checking GitHub login…", isError: false)
 
         Task {
@@ -538,6 +544,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                     self.copilotModelPopup.selectItem(at: index)
                 }
                 self.copilotModelPopup.isEnabled = !self.isBusy
+                self.updateButtonState()
                 self.setCopilotStatus(loadedByTest ? Self.modelsLoadedStatus : "Using your GitHub login.", isError: false)
             }
         }
@@ -594,10 +601,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         isTesting = false
         setBusyUI(false)
         copilotModelPopup.menu?.removeAllItems()
-        // First run: Copilot is only preselected. No `gh` lookup or model request until the user clicks Test or Save.
+        // First run: Copilot is only preselected. Deliberately no `gh` lookup and no model request until the
+        // user clicks Load models (PLAN.md S3 privacy item: nothing runs before the user chooses a provider).
         let chosen = store.savedProvider() != nil
         applyProvider(store.loadProvider(), refresh: chosen)
-        if !chosen { setCopilotStatus("Click Test to check your GitHub login and load the models.", isError: false) }
+        if !chosen { setCopilotStatus("Click Load models to check your GitHub login and load the models.", isError: false) }
         beginPresenceCheck()
     }
 
@@ -647,6 +655,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let enabled = !isBusy && !waitingForKeychain
         saveButton.isEnabled = enabled
         testButton.isEnabled = enabled
+        testButton.title = Self.testButtonTitle(provider: selectedProvider, hasModels: selectedCopilotModelID != nil)
     }
 
     private func setBusyUI(_ busy: Bool) {
@@ -701,7 +710,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switch selectedProvider {
         case .copilot:
             guard let model = selectedCopilotModelID else {
-                show("No Copilot model yet. Click Test to load the list.", isError: true)
+                show("No Copilot model yet. Click Load models to load the list.", isError: true)
                 return nil
             }
             return .copilot(model: model)
@@ -775,7 +784,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     /// One real rewrite with the unsaved settings; nothing is persisted.
     @objc private func testSettings() {
-        // No models yet (first run): Test first loads the list, which is the check the user asked for.
+        // No models yet (first run): the button reads "Load models" and only loads the list; nothing is sent to a model.
         if !isBusy, selectedProvider == .copilot, selectedCopilotModelID == nil {
             refreshCopilot(loadedByTest: true)
             return

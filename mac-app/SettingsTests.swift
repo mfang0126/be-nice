@@ -307,8 +307,12 @@ struct SettingsTests {
                "the former default trio moves to Polite / Shorter / Friendly")
 
         let hint = SettingsWindowController.modelsLoadedStatus
-        expect(hint.contains("Models loaded") && hint.contains("Test again") && hint.contains("one test request"),
-               "after the first Test loads models, the status says so and that Test again sends one request")
+        expect(hint.contains("Models loaded") && hint.contains("Click Test") && hint.contains("one test request"),
+               "after Load models, the status says that Test sends one request")
+        expect(SettingsWindowController.testButtonTitle(provider: .copilot, hasModels: false) == "Load models"
+               && SettingsWindowController.testButtonTitle(provider: .copilot, hasModels: true) == "Test"
+               && SettingsWindowController.testButtonTitle(provider: .custom, hasModels: false) == "Test",
+               "the button says Load models only while Copilot has no models")
 
         // The window is built but never shown; the store and network are fakes.
         _ = NSApplication.shared
@@ -321,6 +325,8 @@ struct SettingsTests {
         let buttons = views(window.contentView!).compactMap { $0 as? NSButton }
         expect(buttons.first { $0.title == "Save" }?.keyEquivalent == "",
                "Return in a field does not trigger Save")
+        expect(buttons.contains { $0.title == "Load models" } && !buttons.contains { $0.title == "Test" },
+               "first run with Copilot preselected shows Load models, not Test")
 
         if failures == 0 {
             print("SELFTEST PASS")
