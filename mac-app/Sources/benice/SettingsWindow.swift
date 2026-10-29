@@ -165,6 +165,36 @@ struct SettingsStore: @unchecked Sendable {
     }
 }
 
+// MARK: - Unsaved changes (pure, covered by SettingsTests)
+
+/// What Save would write for the selected provider. Comparing it with the state at the last
+/// load or save tells whether closing would lose edits. Fields of the other provider are left
+/// blank because Save does not write them.
+struct SettingsFormState: Equatable {
+    var provider: Provider
+    var copilotModel = ""
+    var baseURL = ""
+    var model = ""
+    var typedAPIKey = false
+    var styleNames: [String]
+    var styleInstructions: [String]
+
+    init(provider: Provider, copilotModel: String, baseURL: String, model: String, apiKey: String,
+         styleNames: [String], styleInstructions: [String]) {
+        self.provider = provider
+        self.styleNames = styleNames
+        self.styleInstructions = styleInstructions
+        switch provider {
+        case .copilot:
+            self.copilotModel = copilotModel
+        case .custom:
+            self.baseURL = baseURL
+            self.model = model
+            self.typedAPIKey = !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+}
+
 // MARK: - Save plan (pure persistence, covered by SettingsTests)
 
 /// What Save writes for the chosen provider. A custom plan carries an already
@@ -329,6 +359,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var testGeneration = 0
     /// Drops stale Copilot model-list results; separate so a Keychain check cannot discard them.
     private var copilotGeneration = 0
+    /// The form as last loaded or saved; nil until the window first loads.
+    private var savedState: SettingsFormState?
+    /// Set by "Save" in the close prompt: the window closes once that save succeeds.
+    private var closeAfterSave = false
 
     init(store: SettingsStore = SettingsStore(), network: SettingsNetwork = .live) {
         self.store = store
@@ -369,9 +403,42 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Escape and the red close button must both be inert while saving.
+    /// Escape and the red close button must both be inert while saving. With unsaved
+    /// edits they ask Save / Don't Save / Cancel instead of dropping the edits.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        !isSaving
+        guard !isSaving, sender.attachedSheet == nil else { return false }
+        guard hasUnsavedChanges else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Save changes to Settings?"
+        alert.informativeText = "If you don't save, your changes are lost."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Don't Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: sender) { [weak self] response in
+            switch response {
+            case .alertFirstButtonReturn:
+                self?.closeAfterSave = true
+                self?.saveSettings()
+            case .alertSecondButtonReturn:
+                sender.close()  // close() does not ask windowShouldClose again
+            default:
+                break
+            }
+        }
+        return false
+    }
+
+    private var formState: SettingsFormState {
+        SettingsFormState(
+            provider: selectedProvider,
+            copilotModel: selectedCopilotModelID ?? store.loadCopilotModel(),
+            baseURL: baseURLField.stringValue, model: modelField.stringValue, apiKey: apiKeyField.stringValue,
+            styleNames: styleNameFields.map(\.stringValue),
+            styleInstructions: styleInstructionFields.map(\.stringValue))
+    }
+
+    private var hasUnsavedChanges: Bool {
+        savedState.map { $0 != formState } ?? false
     }
 
     // MARK: Pure helpers
@@ -622,6 +689,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let chosen = store.savedProvider() != nil
         applyProvider(store.loadProvider(), refresh: chosen)
         if !chosen { setCopilotStatus("Click Load models to check your GitHub login and load the models.", isError: false) }
+        savedState = formState
         beginPresenceCheck()
     }
 
@@ -767,6 +835,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func saveSettings() {
+        let closeWhenSaved = closeAfterSave
+        closeAfterSave = false
         guard !isBusy, let slots = currentSlots(), let plan = currentPlan() else { return }
 
         // Invalidate any in-flight presence result: the save outcome is
@@ -806,7 +876,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                     }
                     self.updateAPIKeyPlaceholder()
                 }
+                self.savedState = self.formState
                 self.show("Saved.", isError: false)
+                if closeWhenSaved { self.window?.close() }
             case .failed(let message):
                 self.show(message, isError: true)
             }

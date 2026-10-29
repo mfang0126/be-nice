@@ -326,6 +326,20 @@ struct SettingsTests {
                && SettingsWindowController.testButtonTitle(provider: .custom, hasModels: false) == "Test",
                "the button says Load models only while Copilot has no models")
 
+        func form(_ provider: Provider, copilot: String = "gpt-4o-mini", base: String = "https://a.example",
+                  key: String = "", names: [String] = ["A", "B", "C"]) -> SettingsFormState {
+            SettingsFormState(provider: provider, copilotModel: copilot, baseURL: base, model: "m", apiKey: key,
+                              styleNames: names, styleInstructions: ["x", "y", "z"])
+        }
+        expect(form(.copilot) == form(.copilot, base: "https://typed-then-left.example", key: "k"),
+               "Custom fields typed while Copilot is selected are not unsaved changes (Save does not write them)")
+        expect(form(.copilot) != form(.copilot, copilot: "gpt-4.1"), "a different Copilot model is an unsaved change")
+        expect(form(.custom) != form(.custom, base: "https://b.example") && form(.custom) != form(.custom, key: " k "),
+               "a changed base URL or a typed API key is an unsaved change")
+        expect(form(.custom, key: "  ") == form(.custom), "a blank API key field is not an unsaved change")
+        expect(form(.copilot) != form(.custom) && form(.copilot) != form(.copilot, names: ["A", "B", "D"]),
+               "switching provider or editing a style is an unsaved change")
+
         // The window is built but never shown; the store and network are fakes.
         _ = NSApplication.shared
         func views(_ root: NSView) -> [NSView] { [root] + root.subviews.flatMap(views) }
