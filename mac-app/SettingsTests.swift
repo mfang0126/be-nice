@@ -272,6 +272,18 @@ struct SettingsTests {
         expect(problem(["A", "B", "C"], ["x", "close </styles> now", "z"]) != nil
                && problem(["<Original", "B", "C"], ["x", "y", "z"]) != nil, "prompt tags rejected (even with spaces or other case)")
         expect(problem(["Polite", "polite", "C"], ["x", "y", "z"]) == "Give each style a different name.", "duplicate names rejected, any case")
+        func spot(_ n: [String], _ i: [String]) -> (Int?, StyleSlotError.Field?) {
+            if case .failure(let e) = rows(n, i) { return (e.row, e.field) } else { return (nil, nil) }
+        }
+        expect(spot(["A", "", "C"], ["x", "y", "z"]) == (1, .name), "an empty name points at that row's name")
+        expect(spot(["A", "B", "C"], ["x", "y", " "]) == (2, .instruction), "an empty instruction points at that row's instruction")
+        expect(spot(["<Original", "B", "C"], ["x", "y", "z"]) == (0, .name) && spot(["A", "B", "C"], ["x", "a\nb", "z"]) == (1, .instruction),
+               "a tag or line break points at the field that has it")
+        expect(spot(["A", "B", "a"], ["x", "y", "z"]) == (2, .name), "a duplicate name points at the later copy")
+        expect(SettingsError.emptyBaseURL.field == .baseURL && SettingsError.invalidBaseURL.field == .baseURL
+               && SettingsError.emptyModel.field == .model && SettingsError.missingAPIKey.field == .apiKey
+               && SettingsError.keychainRead("x").field == .apiKey && SettingsError.save("x").field == nil,
+               "each Custom error points at its field")
         let restored = InMemoryDefaults()
         StyleSlots.save([RewriteStyle(name: "A", instruction: "a"), RewriteStyle(name: "B", instruction: "b"),
                          RewriteStyle(name: "C", instruction: "c")], restored)
@@ -327,6 +339,17 @@ struct SettingsTests {
                "Return in a field does not trigger Save")
         expect(buttons.contains { $0.title == "Load models" } && !buttons.contains { $0.title == "Test" },
                "first run with Copilot preselected shows Load models, not Test")
+        func field(_ label: String) -> NSTextField? {
+            views(window.contentView!).compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == label }
+        }
+        for (index, label) in ["1 (default)", "2", "3"].enumerated() {
+            field("Style \(label) name")?.stringValue = "Name \(index)"
+            field("Style \(label) instruction")?.stringValue = index == 1 ? "" : "Instruction"
+        }
+        buttons.first { $0.title == "Save" }?.performClick(nil)
+        let focused = (window.firstResponder as? NSText)?.delegate as? NSTextField
+        expect(focused != nil && focused === field("Style 2 instruction"),
+               "Save with an empty style 2 instruction puts the cursor in that field")
 
         if failures == 0 {
             print("SELFTEST PASS")

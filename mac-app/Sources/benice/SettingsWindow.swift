@@ -39,6 +39,22 @@ enum SettingsError: Error, Equatable, LocalizedError {
     }
 }
 
+enum SettingsField: Equatable {
+    case baseURL, model, apiKey
+}
+
+extension SettingsError {
+    /// The Custom field Settings moves focus to; a failed Keychain read is fixed by typing a key.
+    var field: SettingsField? {
+        switch self {
+        case .emptyBaseURL, .invalidBaseURL: .baseURL
+        case .emptyModel: .model
+        case .missingAPIKey, .keychainRead: .apiKey
+        case .save: nil
+        }
+    }
+}
+
 struct ValidatedSettings: Equatable {
     var settings: ModelSettings
     /// `nil` means "keep the key already stored in the Keychain".
@@ -718,6 +734,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             switch validatedCustomDraft() {
             case .failure(let error):
                 show(error.localizedDescription, isError: true)
+                focus(error.field)
                 return nil
             case .success(let validated):
                 return .custom(validated)
@@ -731,8 +748,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .success(let slots): return slots
         case .failure(let problem):
             show(problem.message, isError: true)
+            if let row = problem.row, styleNameFields.indices.contains(row) {
+                window?.makeFirstResponder(problem.field == .instruction ? styleInstructionFields[row] : styleNameFields[row])
+            }
             return nil
         }
+    }
+
+    /// Puts the cursor in the field a validation error is about.
+    private func focus(_ field: SettingsField?) {
+        let view: NSTextField? = switch field {
+        case .baseURL: baseURLField
+        case .model: modelField
+        case .apiKey: apiKeyField
+        case nil: nil
+        }
+        if let view { window?.makeFirstResponder(view) }
     }
 
     @objc private func saveSettings() {
@@ -798,6 +829,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .custom(let validated):
             guard let url = URL(string: validated.settings.baseURL) else {
                 show(SettingsError.invalidBaseURL.localizedDescription, isError: true)
+                focus(.baseURL)
                 return
             }
             input = .custom(ModelConfig(baseURL: url, model: validated.settings.model),

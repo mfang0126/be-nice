@@ -71,18 +71,24 @@ enum StyleSlots {
             let name = names[row].trimmingCharacters(in: .whitespacesAndNewlines)
             let instruction = instructions[row].trimmingCharacters(in: .whitespacesAndNewlines)
             if name.isEmpty || name.count > 40 {
-                return .failure(.init(message: "Style \(number) needs a name (up to 40 characters)."))
+                return .failure(.init(message: "Style \(number) needs a name (up to 40 characters).", row: row, field: .name))
             }
             if instruction.isEmpty || instruction.count > RewriteStyle.maxInstructionLength {
-                return .failure(.init(message: "Style \(number) needs one line of instruction (up to \(RewriteStyle.maxInstructionLength) characters)."))
+                return .failure(.init(message: "Style \(number) needs one line of instruction (up to \(RewriteStyle.maxInstructionLength) characters).",
+                                      row: row, field: .instruction))
             }
             let style = RewriteStyle(name: name, instruction: instruction)
             guard isValid(style) else {
-                return .failure(.init(message: "Style \(number) can't contain “<” tags or line breaks."))
+                let field: StyleSlotError.Field = isValid(RewriteStyle(name: name, instruction: "x")) ? .instruction : .name
+                return .failure(.init(message: "Style \(number) can't contain “<” tags or line breaks.", row: row, field: field))
             }
             result.append(style)
         }
-        guard hasDistinctNames(result) else { return .failure(.init(message: "Give each style a different name.")) }
+        guard hasDistinctNames(result) else {
+            let names = result.map { $0.name.lowercased() }
+            let repeated = names.indices.first { names[..<$0].contains(names[$0]) }
+            return .failure(.init(message: "Give each style a different name.", row: repeated, field: .name))
+        }
         return .success(result)
     }
 
@@ -99,7 +105,13 @@ enum StyleSlots {
     }
 }
 
-struct StyleSlotError: Error, Equatable { let message: String }
+struct StyleSlotError: Error, Equatable {
+    enum Field: Equatable { case name, instruction }
+    let message: String
+    /// The row (0-based) and field Settings moves focus to, when the problem belongs to one.
+    var row: Int? = nil
+    var field: Field? = nil
+}
 
 public struct RewriteOption: Equatable, Sendable {
     public let style: RewriteStyle
