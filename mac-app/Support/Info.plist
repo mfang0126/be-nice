@@ -45,6 +45,8 @@
 			<key>NSSendTypes</key>
 			<array>
 				<string>public.utf8-plain-text</string>
+				<string>public.rtf</string>
+				<string>public.html</string>
 			</array>
 			<key>NSReturnTypes</key>
 			<array>

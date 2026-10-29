@@ -113,16 +113,13 @@ final class OptimizerController {
     }
 
     /// No-Accessibility paths (Services, clipboard): same settings, client and style slots;
-    /// there is no picker, so the first slot's rewrite is used.
+    /// no picker (`HandoffPolicy.defaultRewrite`).
     nonisolated static func firstRewrite(_ text: String) async throws -> String {
         let store = SettingsStore()
         guard let provider = store.savedProvider(),
               let client = try await client(for: provider, store: store) else { throw HandoffError.needsSetup }
         do {
-            guard let first = try await client.rewriteOptions(text: text, styles: StyleSlots.load()).first else {
-                throw ModelClientError.emptyInput
-            }
-            return first.text
+            return try HandoffPolicy.defaultRewrite(try await client.rewriteOptions(text: text, styles: StyleSlots.load()))
         } catch {
             if provider == .copilot, dropExpiredToken(error) { throw CopilotAuth.AuthError.notLoggedIn }
             throw error

@@ -20,6 +20,45 @@ struct HandoffError: LocalizedError, Equatable {
     static let clipboardChanged = HandoffError(message: "The clipboard changed while rewriting; nothing was copied.")
     static let timedOut = HandoffError(message: "The rewrite took too long; nothing was replaced.")
     static let cancelled = HandoffError(message: "Cancelled; nothing was replaced.")
+    static let busy = HandoffError(message: "Already rewriting; try again in a moment.")
+    static let notSlack = HandoffError(message: "Be Nice works in Slack only; nothing was changed.")
+    static let richSelection = HandoffError(message:
+        "This has links, mentions or formatting. Copy it and press ⌃⌥⌘Space, or enable one-click mode.")
+    static let richClipboard = HandoffError(message:
+        "This has links, mentions or formatting. Enable one-click mode (Accessibility) to rewrite it.")
+}
+
+/// User decisions 2026-10-29 for both no-AX paths.
+enum HandoffPolicy {
+    /// Same Slack allowlist as the AX entry; the frontmost app needs no permission to read.
+    static func allows(bundleID: String?) -> Bool {
+        bundleID.map(TriggerPolicy.wholeValueBundleIDs.contains) ?? false
+    }
+
+    /// Formatting flavors. Other non-text types (source URL, app metadata) are not formatting.
+    static let richTypes: Set<NSPasteboard.PasteboardType> = [
+        .rtf, .rtfd, .html,
+        .init("com.apple.flat-rtfd"), .init("com.apple.webarchive"),
+        .init("Apple HTML pasteboard type"), .init("NeXT Rich Text Format v1.0 pasteboard type"),
+    ]
+
+    // ponytail: "@word" not preceded by a word char or dot; Slack display names with spaces match only their first word.
+    private static let mention = try! NSRegularExpression(pattern: #"(?<![\w.])@[\p{L}\p{N}_][\p{L}\p{N}_.-]*"#)
+
+    /// A plain-text replace would lose it: formatting flavors, a link or an @mention.
+    static func isRich(types: [NSPasteboard.PasteboardType], text: String) -> Bool {
+        if types.contains(where: richTypes.contains) { return true }
+        let range = NSRange(text.startIndex..., in: text)
+        if mention.firstMatch(in: text, range: range) != nil { return true }
+        let links = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        return links?.firstMatch(in: text, range: range) != nil
+    }
+
+    /// No 1–3 picker: the first style slot is the default.
+    static func defaultRewrite(_ options: [RewriteOption]) throws -> String {
+        guard let first = options.first else { throw ModelClientError.emptyInput }
+        return first.text
+    }
 }
 
 /// Every item and type on a pasteboard, so a clipboard rewrite can put the user's copy back.
@@ -107,10 +146,25 @@ final class NoAXController: NSObject {
     private let status = RewriteStatusController()
     private var task: Task<Void, Never>?
     private var serviceCancelled = false
+    private var serviceBusy = false
+    private let pasteboard: NSPasteboard
+    private let frontmostBundleID: @MainActor () -> String?
 
-    init(pasteboard: NSPasteboard = .general, rewrite: @escaping ClipboardRewriter.Rewrite) {
+    init(pasteboard: NSPasteboard = .general,
+         frontmostBundleID: @escaping @MainActor () -> String? = { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
+         rewrite: @escaping ClipboardRewriter.Rewrite) {
         self.rewrite = rewrite
+        self.pasteboard = pasteboard
+        self.frontmostBundleID = frontmostBundleID
         clipboard = ClipboardRewriter(pasteboard: pasteboard, rewrite: rewrite)
+    }
+
+    /// Why this pasteboard must not be rewritten here, if anything. A service runs in the caller's
+    /// session, so the frontmost app is the one asking.
+    func refusal(for pboard: NSPasteboard, rich: HandoffError) -> HandoffError? {
+        guard HandoffPolicy.allows(bundleID: frontmostBundleID()) else { return .notSlack }
+        let types = pboard.types ?? []
+        return HandoffPolicy.isRich(types: types, text: pboard.string(forType: .string) ?? "") ? rich : nil
     }
 
     // MARK: A — Services
@@ -125,11 +179,16 @@ final class NoAXController: NSObject {
     /// Returns nil on success, otherwise the message shown and reported to AppKit.
     /// Services are synchronous: spin the run loop (pill stays live) until the rewrite ends.
     func handleService(_ pboard: NSPasteboard, timeout: TimeInterval = serviceTimeout) -> String? {
+        // The run-loop wait below can deliver a second service call; never nest them.
+        guard !serviceBusy else { return HandoffError.busy.message }
+        if let refusal = refusal(for: pboard, rich: .richSelection) { return finish(.failure(refusal)) }
         guard let text = pboard.string(forType: .string),
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return finish(.failure(HandoffError.noSelection))
         }
         serviceCancelled = false
+        serviceBusy = true
+        defer { serviceBusy = false }
         status.show("Rewriting…", target: Self.mouseRect, undo: nil, cancel: { [weak self] in self?.serviceCancelled = true })
         let box = ResultBox()
         let rewrite = self.rewrite
@@ -153,8 +212,13 @@ final class NoAXController: NSObject {
 
     // MARK: B — clipboard shortcut
 
-    func rewriteClipboard() {
-        guard task == nil else { return }
+    @discardableResult
+    func rewriteClipboard() -> Task<Void, Never>? {
+        guard task == nil else { return nil }
+        if let refusal = refusal(for: pasteboard, rich: .richClipboard) {
+            finish(.failure(refusal))
+            return nil
+        }
         status.show("Rewriting…", target: Self.mouseRect, undo: nil, cancel: { [weak self] in self?.cancelClipboard() })
         task = Task { [weak self] in
             guard let self else { return }
@@ -164,6 +228,7 @@ final class NoAXController: NSObject {
             task = nil
             _ = finish(outcome, undo: clipboard.canRestore ? { [weak self] in self?.restoreClipboard() } : nil)
         }
+        return task
     }
 
     private func cancelClipboard() {
