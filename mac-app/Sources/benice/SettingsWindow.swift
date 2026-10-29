@@ -278,10 +278,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
 
     private lazy var saveButton: NSButton = {
+        // No Return key equivalent: Return while editing one style row must not save the whole window.
         let button = NSButton(title: "Save", target: self, action: #selector(saveSettings))
         button.bezelStyle = .rounded
-        button.keyEquivalent = "\r"
-        button.keyEquivalentModifierMask = []
         return button
     }()
 
@@ -452,7 +451,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ])
         window.contentView = content
 
-        // Hidden panes are skipped by the key loop. Return (default button) is Save.
+        // Hidden panes are skipped by the key loop.
         apiKeyField.delegate = self
         window.initialFirstResponder = providerControl
         let order: [NSView] = [providerControl, copilotModelPopup, baseURLField, modelField, apiKeyField]

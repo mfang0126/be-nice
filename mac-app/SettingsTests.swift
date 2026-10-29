@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 private final class InMemoryDefaults: UserDefaults {
     private var values: [String: Any] = [:]
@@ -34,6 +34,7 @@ private final class InMemoryDefaults: UserDefaults {
 ///     /tmp/benice-settings-tests
 @main
 struct SettingsTests {
+    @MainActor
     static func main() {
         var failures = 0
         func expect(_ condition: Bool, _ message: String) {
@@ -308,6 +309,18 @@ struct SettingsTests {
         let hint = SettingsWindowController.modelsLoadedStatus
         expect(hint.contains("Models loaded") && hint.contains("Test again") && hint.contains("one test request"),
                "after the first Test loads models, the status says so and that Test again sends one request")
+
+        // The window is built but never shown; the store and network are fakes.
+        _ = NSApplication.shared
+        func views(_ root: NSView) -> [NSView] { [root] + root.subviews.flatMap(views) }
+        let offline = SettingsNetwork(token: { throw SettingsError.missingAPIKey },
+                                      listModels: { _ in [] }, runTest: { _, _, _ in }, storedKey: { nil })
+        let window = SettingsWindowController(
+            store: SettingsStore(defaults: InMemoryDefaults(), hasKey: { false }, saveKey: { _ in }),
+            network: offline).window!
+        let buttons = views(window.contentView!).compactMap { $0 as? NSButton }
+        expect(buttons.first { $0.title == "Save" }?.keyEquivalent == "",
+               "Return in a field does not trigger Save")
 
         if failures == 0 {
             print("SELFTEST PASS")
