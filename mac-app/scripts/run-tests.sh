@@ -31,6 +31,7 @@ run rewrite-copy-only -lib $S/ModelClient.swift $S/RewriteOptions.swift $S/Rewri
 run writeback -lib $S/WriteBack.swift $S/ModelClient.swift $S/RewriteOptions.swift $T/WriteBackTests.swift
 run trigger -lib $S/TriggerController.swift $T/TriggerTests.swift
 run status-pill -lib $S/TriggerController.swift $S/StatusPill.swift $T/StatusPillTests.swift
+run no-ax-mode -lib $S/TriggerController.swift $S/StatusPill.swift $S/NoAXMode.swift $T/NoAXModeTests.swift
 run settings -lib $S/CredentialStore.swift $S/ModelClient.swift $S/RewriteOptions.swift $S/CopilotAuth.swift $S/SettingsWindow.swift $T/SettingsTests.swift
 run slack-diagnostic $S/SlackDiagnostic.swift $T/SlackDiagnosticTests.swift
 run style-profile $S/StyleProfile.swift $T/StyleProfileTests.swift
