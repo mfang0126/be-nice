@@ -2,6 +2,7 @@
 
 > 状态：原型（2026-10-29），未经真实 App 验证。实测步骤见 [no-ax-mode-user-test.md](no-ax-mode-user-test.md)。
 > 用户 2026-10-29 认可的形态：授权了就走现有一键流程；没授权走 A 服务菜单，A 不能原地替换的 App 走 B 剪贴板。不做输入法、Slack 应用、斜杠命令、浏览器扩展。
+> 用户 2026-10-29 追加三个决定（见「决定」）：只在 Slack 可用；只用默认风格；富内容拒绝。
 
 ## 结论
 
@@ -10,7 +11,7 @@
   - **A 服务菜单**：选中草稿 → 系统「服务」菜单里的 “Rewrite with Be Nice”（或用户自己在系统设置配的快捷键）→ 原地替换。撤销用宿主 App 的 ⌘Z。
   - **B 剪贴板**：⌘A ⌘C → ⌃⌥⌘Space → 改写结果放进剪贴板，鼠标旁 pill 提示 “Copied — press ⌘V” → 用户 ⌘V。pill 上的 Undo 把改写前的剪贴板（就是原草稿）原样放回。
   - pill 不知道输入框位置，改为跟着鼠标。
-- 两条路径都**没有 1–3 选 1 的界面**：直接用第 1 个风格槽的结果（原型取舍，见「待定」）。
+- 两条路径都**只在 Slack 里可用**，**没有 1–3 选 1**（用第 1 个风格槽），**带链接、@提及或格式就拒绝**（见「决定」）。
 - 代码复用：模型配置、Copilot/自定义 provider、风格槽、提示词全部走 `OptimizerController.client(for:store:)` 和 `ModelClient.rewriteOptions`，没有复制。
 
 ## 现状（读代码得到）
@@ -25,19 +26,21 @@
 - `AccessMode(trusted: AXIsProcessTrusted())`：`.accessibility` / `.noAccessibility`。每次按快捷键时现查，授权或撤销立即生效，不用重启。
 - 快捷键：`TriggerController.fireFromShortcut` 现查 `AXIsProcessTrusted()`，为假时调 `onShortcutWithoutAccessibility`（走 B），为真时走原流程。同一个快捷键，用户不用记两个。
 - 服务菜单（A）**始终注册**，有没有授权都能用；有授权时它只是多一个入口。
+- 两条路径执行前先过 `NoAXController.refusal`：前台 App 不在 Slack 白名单 → 拒绝；带富内容 → 拒绝（见「决定」）。
 - revoked（授权过又被撤销）同样退到零权限模式，菜单文案说明。
 
 ## A：系统「服务」菜单
 
-- `Support/Info.plist` 的 `NSServices`：`NSMessage = rewriteText`，`NSSendTypes` / `NSReturnTypes` = `public.utf8-plain-text`，`NSRequiredContext = {}`（默认启用），`NSTimeout = 60000` ms。**不设 `NSKeyEquivalent`**：默认快捷键留空，用户在 系统设置 → 键盘 → 键盘快捷键 → 服务 → 文本 → “Rewrite with Be Nice” 里自己配，避免和宿主 App 冲突。开发版由 `build-app.sh` 改成 “Rewrite with Be Nice (Dev)”，`NSPortName` 跟 `CFBundleName` 一致。
+- `Support/Info.plist` 的 `NSServices`：`NSMessage = rewriteText`，`NSSendTypes` = 纯文本 + `public.rtf` + `public.html`（多要两种只为看出富内容，看到就拒绝），`NSReturnTypes` = 纯文本，`NSRequiredContext = {}`（默认启用），`NSTimeout = 60000` ms。**不设 `NSKeyEquivalent`**：默认快捷键留空，用户在 系统设置 → 键盘 → 键盘快捷键 → 服务 → 文本 → “Rewrite with Be Nice” 里自己配，避免和宿主 App 冲突。开发版由 `build-app.sh` 改成 “Rewrite with Be Nice (Dev)”，`NSPortName` 跟 `CFBundleName` 一致。
 - 启动时 `NSApp.servicesProvider = NoAXController`，再 `NSUpdateDynamicServices()`。
-- 数据流：宿主把选区写到服务专用 pasteboard → `rewriteText(_:userData:error:)` → `handleService`：空选区直接报错；否则鼠标旁 pill “Rewriting…”（可 Cancel），在后台任务里调 `OptimizerController.firstRewrite`，主线程转 run loop 等结果（服务调用是同步的，55 秒自限，低于 60 秒 NSTimeout）→ 成功写回服务 pasteboard，宿主替换选区；失败设 `error`，宿主不替换。
+- 数据流：宿主把选区写到服务专用 pasteboard → `rewriteText(_:userData:error:)` → `handleService`：上一次还在跑就拒绝（等待时的 run loop 可能收到第二个服务调用）；不在 Slack 或带富内容就拒绝；空选区直接报错；否则鼠标旁 pill “Rewriting…”（可 Cancel），在后台任务里调 `OptimizerController.firstRewrite`，主线程转 run loop 等结果（服务调用是同步的，55 秒自限，低于 60 秒 NSTimeout）→ 成功写回服务 pasteboard，宿主替换选区；失败设 `error`，宿主不替换。
 - **不碰用户的通用剪贴板**（服务用的是独立 pasteboard）。
 - 撤销：宿主 App 的 ⌘Z。Cocoa 文本框（TextEdit 等）会把服务替换记进撤销栈；Electron/Chromium 是否支持服务的**写回**（`readSelectionFromPasteboard`）以及 ⌘Z 是否能撤回，都**未验证**，是用户实测的重点。
-- 风险：只传纯文本，Slack 里选区带 @提及、链接、列表时替换后会丢格式。现有 AX 路径对富内容只给 Copy；A 目前没有这道检查（见「待定」）。
+- 富内容：已拒绝，提示 “Copy it and press ⌃⌥⌘Space, or enable one-click mode.”（见「决定」3）。
 
 ## B：剪贴板 + 全局快捷键
 
+- 先过 `refusal`：不在 Slack → “Be Nice works in Slack only; nothing was changed.”；剪贴板带富内容 → “…Enable one-click mode (Accessibility) to rewrite it.”。都不读模型、不改剪贴板。
 - `ClipboardRewriter.run()`：读通用剪贴板的字符串；为空就提示 “Copy your draft first (⌘A ⌘C)…”，**不调模型**。否则先把剪贴板所有 item 的所有类型存进内存（`PasteboardSnapshot`），记下 `changeCount`，调模型。
 - 模型返回后，如果 `changeCount` 变了（用户等待期间又复制了别的），**不写**，报 “The clipboard changed…”。否则写入改写结果，记下写后的 `changeCount`。
 - pill：“Copied — press ⌘V”＋Undo。
@@ -73,12 +76,21 @@
 - `MenuBarShell.swift`：注册服务、接上 B、改菜单文案。
 - `StatusPill.swift`：两条新成功文案按成功样式显示。
 - `Support/Info.plist`、`scripts/build-app.sh`：NSServices；开发版改名。
-- `NoAXModeTests.swift`（新，进 `run-tests.sh`）：模式判定；B 的写入、全类型恢复、一次性恢复、新复制不被覆盖、等待期间剪贴板变化不写、空剪贴板不调模型；A 的成功输出、模型报错不替换、空选区、超时不替换。只用私有命名 pasteboard，不碰用户剪贴板。
+- `NoAXModeTests.swift`（新，进 `run-tests.sh`）：模式判定；三个决定（Slack 外 A/B 都拒绝且不调模型、富类型/链接/提及拒绝而纯文本+元数据放行、默认取第 1 个风格）；B 的写入、全类型恢复、一次性恢复、新复制不被覆盖、等待期间剪贴板变化不写、空剪贴板不调模型；A 的成功输出、模型报错不替换、空选区、超时不替换。只用私有命名 pasteboard，不碰用户剪贴板。
 - 没碰 `SettingsWindow.swift`、`WriteBack.swift`。
 
-## 待定（需要用户/协调者决定）
+## 决定（用户 2026-10-29）
 
-1. **允许列表冲突**：PLAN 2026-10-27 定“只支持 Slack，其他 App 不出入口”。A/B 天然对所有 App 生效（实测也要试 TextEdit 和浏览器）。是否在 A/B 里也只允许 Slack（按 `frontmostApplication` 判断）？原型没加限制。
-2. **选 1–3 个版本**：A 是同步调用，B 想保持“不抢焦点”，所以原型直接用第 1 个风格。要不要在 B 里弹现有改写窗口的 Copy 模式让用户挑？
-3. **A 的富内容检查**：可以多声明 `public.rtf` / `public.html` 发送类型，发现链接/提及就拒绝替换、改为复制。要等 Slack 实测看它服务里给什么类型。
-4. README Setup 第 4 步文案（上面草稿）。
+1. **只在 Slack 可用**：沿用 `TriggerPolicy.wholeValueBundleIDs`（只有 Slack），用 `NSWorkspace.shared.frontmostApplication` 判断，不需要权限。服务调用时前台就是发起调用的 App。其他 App 里触发：鼠标旁 pill “Be Nice works in Slack only; nothing was changed.”，不发模型请求，不改任何文字。这也挡住了“任意本机程序借 Be Nice 调用户模型”的一部分风险。
+2. **只用默认风格**：`HandoffPolicy.defaultRewrite` 取第 1 个风格槽，不弹 1–3 选择。
+3. **富内容拒绝**（A、B 同一判断 `HandoffPolicy.isRich`）：
+   - pasteboard 上有格式类型：`public.rtf`、`public.rtfd`、`public.html`、`com.apple.flat-rtfd`、`com.apple.webarchive` 及其旧名 → 拒绝。
+   - 纯文本里有链接（`NSDataDetector`，含邮箱）或 `@名字`（前面不是字母数字或点）→ 拒绝。
+   - 其他非文本类型（如 `org.chromium.source-url` 这类来源元数据）不算格式，不拒绝。这是对“RTF/HTML 等非纯文本类型”的落地解释：只列格式类型，不把所有非纯文本类型都算进去。
+   - **风险（需实测）**：Chromium/Electron 复制或提供选区时常常同时放 `public.html`，哪怕内容只是纯文字。如果 Slack 也这样，A 和 B 在 Slack 里会**每次都被拒**。实测步骤里加了查看剪贴板类型的一步；若确认如此，改法是：有 HTML 时检查内容，只有含链接/提及/格式标签才拒绝（一处改动，`HandoffPolicy.isRich`）。
+   - `@名字` 规则对含空格的 Slack 显示名只匹配第一个词，足够判定“有提及”。
+
+## 仍待定
+
+- README Setup 第 4 步文案（上面草稿）。
+- 服务调用无法验证调用方身份（安全审查提出）：现在有 Slack 前台判断 + 不嵌套；更严的做法（每个调用方首次确认、限频）未做。

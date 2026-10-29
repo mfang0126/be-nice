@@ -27,7 +27,8 @@
 ## 零权限模式（2026-10-29 用户认可形态，原型阶段）
 
 - 辅助功能改为可选：授权了保持现有一键流程；没授权退到 A 系统「服务」菜单原地替换，A 不行的 App 退到 B 剪贴板 + ⌃⌥⌘Space + ⌘V（可恢复原剪贴板）；pill 改在鼠标旁。不做输入法、Slack 应用、斜杠命令、浏览器扩展。
-- 设计与待定项（与“只支持 Slack”允许列表的冲突、是否给 1–3 选 1、A 的富内容检查）：[docs/design/no-ax-mode.md](docs/design/no-ax-mode.md)。验收以用户按 [docs/design/no-ax-mode-user-test.md](docs/design/no-ax-mode-user-test.md) 实测为准。
+- 2026-10-29 用户追加：A/B 只在 Slack 可用（沿用白名单，前台 App 判断）；只用默认风格，不弹 1–3 选择；选区或剪贴板带 RTF/HTML 等格式类型、链接或 @提及就拒绝。
+- 设计：[docs/design/no-ax-mode.md](docs/design/no-ax-mode.md)。验收以用户按 [docs/design/no-ax-mode-user-test.md](docs/design/no-ax-mode-user-test.md) 实测为准。
 
 ## 核心交互（2026-10-25 12:53 定案；2026-10-26 视觉改为并排对比）
 
