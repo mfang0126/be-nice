@@ -11,7 +11,8 @@ final class RewriteStatusController {
     private static let pad: CGFloat = 14
     private static let gap: CGFloat = 8
     private static let font = NSFont.systemFont(ofSize: 13)
-    private static let successMessages = ["Replaced", "Undo last replace", "Restored"]
+    private static let successMessages = ["Replaced", "Undo last replace", "Restored",
+                                          "Replaced — ⌘Z to undo", "Copied — press ⌘V"]
 
     private let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 140, height: 36),
         styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
