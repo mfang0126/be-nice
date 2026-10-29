@@ -34,7 +34,7 @@
 3. 菜单栏 Slack → 服务（Services）：有没有 “Rewrite with Be Nice (Dev)”？如果没有，右键选区看看有没有“服务”子菜单。
 4. 点它（或按你配的快捷键）。鼠标旁应出现 “Rewriting…”。
 5. 结果记录：
-   - pill 显示 “This has links, mentions or formatting…” 而草稿明明是纯文字 → **富内容误拒**，做第 1.5 步。
+   - pill 显示 “This has links, mentions or formatting…” 而草稿明明是纯文字 → **富内容误拒**，做第 7.5 步。
    - 选区被替换成改写结果，pill 显示 “Replaced — ⌘Z to undo” → **原地替换 ✅**。
    - pill 显示 Replaced 但输入框没变 → Slack 不接收服务写回 ❌（这时 A 在 Slack 不可用，走 B）。
    - 服务菜单里根本没有这一项 → Slack 不把选区提供给服务 ❌。
