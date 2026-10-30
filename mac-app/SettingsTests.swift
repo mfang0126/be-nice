@@ -460,6 +460,19 @@ struct SettingsTests {
                && loadLabel("Settings status")?.stringValue == SettingsWindowController.modelsLoadedStatus,
                "pane: \(loadLabel("Copilot status")?.stringValue ?? "nil"); status: \(loadLabel("Settings status")?.stringValue ?? "nil")")
 
+        // P2 #7: a status message appearing (one or two lines) or clearing does not change the window height.
+        let (steadyWindow, steadyField, steadyButtons) = customWindow()
+        let steadyHeight = steadyWindow.frame.height
+        steadyField("Model")?.stringValue = ""
+        steadyButtons.first { $0.title == "Save" }?.performClick(nil)
+        let oneLine = steadyWindow.frame.height
+        steadyField("Model")?.stringValue = "m"
+        steadyField("Base URL")?.stringValue = "http://not-local.example/v1?x=1"
+        steadyButtons.first { $0.title == "Save" }?.performClick(nil)
+        let twoLine = steadyWindow.frame.height
+        expect(steadyField("Settings status")?.stringValue.isEmpty == false && oneLine == steadyHeight && twoLine == steadyHeight,
+               "window height stays \(steadyHeight): \(oneLine), \(twoLine)")
+
         if failures == 0 {
             print("SELFTEST PASS")
             exit(0)

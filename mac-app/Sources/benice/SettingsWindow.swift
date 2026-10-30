@@ -510,6 +510,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.preferredMaxLayoutWidth = Self.contentWidth
         statusLabel.setAccessibilityLabel("Settings status")
+        // Two lines are always reserved, so a message appearing or clearing does not move the buttons.
+        let probe = NSTextField(wrappingLabelWithString: "X\nX")
+        probe.font = statusLabel.font
+        let twoLines = probe.fittingSize.height
+        for label in [statusLabel, copilotStatusLabel] {
+            label.heightAnchor.constraint(greaterThanOrEqualToConstant: twoLines).isActive = true
+        }
 
         let buttons = NSStackView(views: [closeButton, testButton, saveButton])
         buttons.orientation = .horizontal
