@@ -317,7 +317,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private let styleNameFields = (0..<3).map { _ in NSTextField() }
     private let styleInstructionFields = (0..<3).map { _ in NSTextField() }
-    /// Pull-down per row: picking a preset fills that row's two fields, nothing more.
+    /// Pull-down per row: picking a preset fills that row's two fields (asking first if the user wrote them).
     private let presetMenus = (0..<3).map { _ in NSPopUpButton(frame: .zero, pullsDown: true) }
     private let restoreButton = NSButton(title: "Restore default styles", target: nil, action: nil)
 
