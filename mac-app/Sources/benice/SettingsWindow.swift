@@ -363,6 +363,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var savedState: SettingsFormState?
     /// Set by "Save" in the close prompt: the window closes once that save succeeds.
     private var closeAfterSave = false
+    /// The status shows a finished Save/Test ("Saved.", "Worked in…"); the next edit clears it.
+    private var statusIsResult = false
 
     init(store: SettingsStore = SettingsStore(), network: SettingsNetwork = .live) {
         self.store = store
@@ -464,6 +466,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         copilotStatusLabel.textColor = .secondaryLabelColor
         copilotStatusLabel.preferredMaxLayoutWidth = Self.contentWidth
         copilotModelPopup.setAccessibilityLabel("Copilot model")
+        copilotModelPopup.target = self
+        copilotModelPopup.action = #selector(formEdited)
         copilotModelPopup.widthAnchor.constraint(equalToConstant: 260).isActive = true
 
         let stylesHeader = NSTextField(labelWithString: "Your three styles")
@@ -535,7 +539,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.contentView = content
 
         // Hidden panes are skipped by the key loop.
-        apiKeyField.delegate = self
+        for field in [baseURLField, modelField, apiKeyField] + styleNameFields + styleInstructionFields {
+            field.delegate = self
+        }
         window.initialFirstResponder = providerControl
         let order: [NSView] = [providerControl, copilotModelPopup, baseURLField, modelField, apiKeyField]
             + (0..<3).flatMap { [styleNameFields[$0], styleInstructionFields[$0], presetMenus[$0]] }
@@ -658,6 +664,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let preset = RewriteStyle.presets[item.tag]
         styleNameFields[row].stringValue = preset.name
         styleInstructionFields[row].stringValue = preset.instruction
+        formEdited()
+    }
+
+    /// Any edit makes an earlier "Saved." or "Worked in…" untrue for the form now on screen.
+    @objc private func formEdited() {
+        if statusIsResult { show("", isError: false) }
     }
 
     @objc private func restoreDefaults() {
@@ -877,7 +889,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                     self.updateAPIKeyPlaceholder()
                 }
                 self.savedState = self.formState
-                self.show("Saved.", isError: false)
+                self.show("Saved.", isError: false, result: true)
                 if closeWhenSaved { self.window?.close() }
             case .failed(let message):
                 self.show(message, isError: true)
@@ -939,7 +951,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             self.setBusyUI(false)
             switch result {
             case .worked(let seconds):
-                self.show(String(format: "Worked in %.1f s.", seconds), isError: false)
+                self.show(String(format: "Worked in %.1f s.", seconds), isError: false, result: true)
             case .failed(let message):
                 self.show(message, isError: true)
             }
@@ -947,7 +959,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func show(_ message: String, isError: Bool) {
+    private func show(_ message: String, isError: Bool, result: Bool = false) {
+        statusIsResult = result
         statusLabel.textColor = isError ? .systemRed : .secondaryLabelColor
         statusLabel.stringValue = message
         fitWindow()
@@ -961,6 +974,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 extension SettingsWindowController: NSTextFieldDelegate {
     /// A nonblank key makes Save independent of the presence check.
     func controlTextDidChange(_ obj: Notification) {
+        formEdited()
         updateButtonState()
     }
 }

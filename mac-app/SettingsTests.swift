@@ -365,6 +365,52 @@ struct SettingsTests {
         expect(focused != nil && focused === field("Style 2 instruction"),
                "Save with an empty style 2 instruction puts the cursor in that field")
 
+        // A fresh window (never shown, so never reloaded) on Custom with a complete, valid form.
+        func customWindow(network: SettingsNetwork = offline) -> (NSWindow, (String) -> NSTextField?, [NSButton]) {
+            let w = SettingsWindowController(
+                store: SettingsStore(defaults: InMemoryDefaults(), hasKey: { false }, saveKey: { _ in }),
+                network: network).window!
+            let all = views(w.contentView!)
+            func f(_ label: String) -> NSTextField? {
+                all.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == label }
+            }
+            let provider = all.compactMap { $0 as? NSSegmentedControl }.first!
+            provider.selectedSegment = 1
+            _ = provider.sendAction(provider.action, to: provider.target)
+            f("Base URL")?.stringValue = "https://api.example.com"
+            f("Model")?.stringValue = "m"
+            f("API key")?.stringValue = "k"
+            for (index, label) in ["1 (default)", "2", "3"].enumerated() {
+                f("Style \(label) name")?.stringValue = "Name \(index)"
+                f("Style \(label) instruction")?.stringValue = "Instruction"
+            }
+            return (w, f, all.compactMap { $0 as? NSButton })
+        }
+        func spin(until done: () -> Bool) {
+            let deadline = Date().addingTimeInterval(3)
+            while !done(), Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        }
+        func edit(_ w: NSWindow, _ field: NSTextField?) {
+            (w.delegate as? NSTextFieldDelegate)?.controlTextDidChange?(
+                Notification(name: NSControl.textDidChangeNotification, object: field))
+        }
+
+        // P2 #8: "Saved." / "Worked in…" disappear on the next edit; they would claim unsaved edits were kept.
+        let keyed = SettingsNetwork(token: { throw SettingsError.missingAPIKey },
+                                    listModels: { _ in [] }, runTest: { _, _, _ in }, storedKey: { "k" })
+        let (savedWindow, savedField, savedButtons) = customWindow(network: keyed)
+        let savedStatus = savedField("Settings status")
+        savedButtons.first { $0.title == "Save" }?.performClick(nil)
+        spin { savedStatus?.stringValue == "Saved." }
+        expect(savedStatus?.stringValue == "Saved.", "valid custom form saves: \(savedStatus?.stringValue ?? "nil")")
+        edit(savedWindow, savedField("Style 2 instruction"))
+        expect(savedStatus?.stringValue == "", "an edit after Save clears \"Saved.\"")
+        savedButtons.first { $0.title == "Test" }?.performClick(nil)
+        spin { savedStatus?.stringValue.hasPrefix("Worked in") == true }
+        expect(savedStatus?.stringValue.hasPrefix("Worked in") == true, "test works: \(savedStatus?.stringValue ?? "nil")")
+        edit(savedWindow, savedField("Base URL"))
+        expect(savedStatus?.stringValue == "", "an edit after Test clears \"Worked in…\"")
+
         if failures == 0 {
             print("SELFTEST PASS")
             exit(0)
