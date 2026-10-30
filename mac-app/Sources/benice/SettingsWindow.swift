@@ -465,6 +465,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         copilotStatusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         copilotStatusLabel.textColor = .secondaryLabelColor
         copilotStatusLabel.preferredMaxLayoutWidth = Self.contentWidth
+        copilotStatusLabel.setAccessibilityLabel("Copilot status")
         copilotModelPopup.setAccessibilityLabel("Copilot model")
         copilotModelPopup.target = self
         copilotModelPopup.action = #selector(formEdited)
@@ -641,7 +642,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 }
                 self.copilotModelPopup.isEnabled = !self.isBusy
                 self.updateButtonState()
-                self.setCopilotStatus(loadedByTest ? Self.modelsLoadedStatus : "Using your GitHub login.", isError: false)
+                // The pane keeps lasting login state; a one-off result goes to the one status line below.
+                self.setCopilotStatus("Using your GitHub login.", isError: false)
+                if loadedByTest { self.show(Self.modelsLoadedStatus, isError: false) }
             }
         }
     }

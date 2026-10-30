@@ -444,6 +444,22 @@ struct SettingsTests {
         let loadHelp = buttons.first { $0.title == "Load models" }?.toolTip ?? ""
         expect(loadHelp.contains("Nothing is sent to a model"), "Load models tooltip: \(loadHelp)")
 
+        // P2 #6: after Load models the pane shows only login state; "Models loaded…" is in the one status line.
+        let online = SettingsNetwork(token: { "t" }, listModels: { _ in [CopilotAuth.Model(id: "gpt-x", name: "GPT X")] },
+                                     runTest: { _, _, _ in }, storedKey: { nil })
+        let loadWindow = SettingsWindowController(
+            store: SettingsStore(defaults: InMemoryDefaults(), hasKey: { false }, saveKey: { _ in }),
+            network: online).window!
+        let loadViews = views(loadWindow.contentView!)
+        func loadLabel(_ label: String) -> NSTextField? {
+            loadViews.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == label }
+        }
+        loadViews.compactMap { $0 as? NSButton }.first { $0.title == "Load models" }?.performClick(nil)
+        spin { loadLabel("Settings status")?.stringValue == SettingsWindowController.modelsLoadedStatus }
+        expect(loadLabel("Copilot status")?.stringValue == "Using your GitHub login."
+               && loadLabel("Settings status")?.stringValue == SettingsWindowController.modelsLoadedStatus,
+               "pane: \(loadLabel("Copilot status")?.stringValue ?? "nil"); status: \(loadLabel("Settings status")?.stringValue ?? "nil")")
+
         if failures == 0 {
             print("SELFTEST PASS")
             exit(0)
