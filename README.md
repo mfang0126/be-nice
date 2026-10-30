@@ -35,7 +35,7 @@ Open **Settings** from the menu-bar icon and pick a model source. **Nothing is s
 
 Click **Test** to check it works (with Copilot, click **Load models** first to read the model list from your GitHub login). **Privacy:** with Copilot or a remote endpoint, your draft text is sent to that provider. Be Nice has no server of its own and bundles no model.
 
-You can also change the three rewrite styles in Settings: each has a name and one line of instruction, `Presets` fills a row as a starting point, and `Restore defaults` brings the original three back. In the rewrite window, clicking a style name tries another style for that one rewrite only.
+You can also change the three rewrite styles in Settings: each has a name and one line of instruction, `Presets` fills a row as a starting point, and `Restore default styles` brings the original three back (your model and API key stay as they are). In the rewrite window, clicking a style name tries another style for that one rewrite only.
 
 ## Use
 

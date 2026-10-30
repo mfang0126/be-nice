@@ -317,9 +317,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private let styleNameFields = (0..<3).map { _ in NSTextField() }
     private let styleInstructionFields = (0..<3).map { _ in NSTextField() }
-    /// Pull-down per row: picking a preset fills that row's two fields, nothing more.
+    /// Pull-down per row: picking a preset fills that row's two fields (asking first if the user wrote them).
     private let presetMenus = (0..<3).map { _ in NSPopUpButton(frame: .zero, pullsDown: true) }
-    private let restoreButton = NSButton(title: "Restore defaults", target: nil, action: nil)
+    private let restoreButton = NSButton(title: "Restore default styles", target: nil, action: nil)
 
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
 
@@ -363,6 +363,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var savedState: SettingsFormState?
     /// Set by "Save" in the close prompt: the window closes once that save succeeds.
     private var closeAfterSave = false
+    /// The status shows a finished Save/Test ("Saved.", "Worked in…"); the next edit clears it.
+    private var statusIsResult = false
 
     init(store: SettingsStore = SettingsStore(), network: SettingsNetwork = .live) {
         self.store = store
@@ -463,9 +465,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         copilotStatusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         copilotStatusLabel.textColor = .secondaryLabelColor
         copilotStatusLabel.preferredMaxLayoutWidth = Self.contentWidth
+        copilotStatusLabel.setAccessibilityLabel("Copilot status")
         copilotModelPopup.setAccessibilityLabel("Copilot model")
+        copilotModelPopup.target = self
+        copilotModelPopup.action = #selector(formEdited)
         copilotModelPopup.widthAnchor.constraint(equalToConstant: 260).isActive = true
 
+        // Two titled sections: where drafts go, then the styles.
+        let modelHeader = NSTextField(labelWithString: "Send drafts to")
+        modelHeader.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+        let sectionSeparator = NSBox()
+        sectionSeparator.boxType = .separator
+        sectionSeparator.widthAnchor.constraint(equalToConstant: Self.contentWidth).isActive = true
         let stylesHeader = NSTextField(labelWithString: "Your three styles")
         stylesHeader.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
         let slotNames = ["1 (default)", "2", "3"]
@@ -499,12 +510,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         restoreButton.target = self
         restoreButton.action = #selector(restoreDefaults)
         restoreButton.bezelStyle = .rounded
-        restoreButton.setAccessibilityLabel("Restore defaults")
+        restoreButton.setAccessibilityLabel("Restore default styles")
+        // Beside the styles header, so it reads as styles-only (the model and API key are never touched).
+        let stylesHeaderRow = NSStackView(views: [stylesHeader, NSView(), restoreButton])
+        stylesHeaderRow.orientation = .horizontal
+        stylesHeaderRow.widthAnchor.constraint(equalToConstant: Self.contentWidth).isActive = true
 
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.preferredMaxLayoutWidth = Self.contentWidth
         statusLabel.setAccessibilityLabel("Settings status")
+        // Two lines are always reserved, so a message appearing or clearing does not move the buttons.
+        let probe = NSTextField(wrappingLabelWithString: "X\nX")
+        probe.font = statusLabel.font
+        let twoLines = probe.fittingSize.height
+        for label in [statusLabel, copilotStatusLabel] {
+            label.heightAnchor.constraint(greaterThanOrEqualToConstant: twoLines).isActive = true
+        }
 
         let buttons = NSStackView(views: [closeButton, testButton, saveButton])
         buttons.orientation = .horizontal
@@ -515,12 +537,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         buttons.insertArrangedSubview(pushRight, at: 0)  // Close, Test and Save sit at the right, Save last
 
         let stack = NSStackView(views: [
-            providerControl, copilotPane, customPane, stylesHeader, stylesGrid, restoreButton, statusLabel, buttons,
+            modelHeader, providerControl, copilotPane, customPane, sectionSeparator, stylesHeaderRow, stylesGrid,
+            statusLabel, buttons,
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
-        stack.setCustomSpacing(8, after: stylesHeader)
+        stack.setCustomSpacing(8, after: modelHeader)
+        stack.setCustomSpacing(8, after: stylesHeaderRow)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let content = NSView()
@@ -535,11 +559,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.contentView = content
 
         // Hidden panes are skipped by the key loop.
-        apiKeyField.delegate = self
+        for field in [baseURLField, modelField, apiKeyField] + styleNameFields + styleInstructionFields {
+            field.delegate = self
+        }
         window.initialFirstResponder = providerControl
-        let order: [NSView] = [providerControl, copilotModelPopup, baseURLField, modelField, apiKeyField]
+        let order: [NSView] = [providerControl, copilotModelPopup, baseURLField, modelField, apiKeyField, restoreButton]
             + (0..<3).flatMap { [styleNameFields[$0], styleInstructionFields[$0], presetMenus[$0]] }
-            + [restoreButton, closeButton, testButton, saveButton]
+            + [closeButton, testButton, saveButton]
         for (view, next) in zip(order, order.dropFirst() + [order[0]]) { view.nextKeyView = next }
     }
 
@@ -591,6 +617,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         provider == .copilot && !hasModels ? "Load models" : "Test"
     }
 
+    /// Test spends one real request; say so where the button is (tooltip and VoiceOver help).
+    static func testButtonHelp(provider: Provider, hasModels: Bool) -> String {
+        testButtonTitle(provider: provider, hasModels: hasModels) == "Load models"
+            ? "Checks your GitHub login and loads the model list. Nothing is sent to a model."
+            : "Sends one sample message to the selected model, never your drafts. This uses one request."
+    }
+
     private func refreshCopilot(loadedByTest: Bool = false) {
         copilotGeneration &+= 1
         let generation = copilotGeneration
@@ -628,7 +661,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 }
                 self.copilotModelPopup.isEnabled = !self.isBusy
                 self.updateButtonState()
-                self.setCopilotStatus(loadedByTest ? Self.modelsLoadedStatus : "Using your GitHub login.", isError: false)
+                // The pane keeps lasting login state; a one-off result goes to the one status line below.
+                self.setCopilotStatus("Using your GitHub login.", isError: false)
+                if loadedByTest { self.show(Self.modelsLoadedStatus, isError: false) }
             }
         }
     }
@@ -652,17 +687,49 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// True when a row holds text the user wrote (not blank, not a preset or default): a preset pick asks first.
+    static func presetWouldReplaceCustomText(name: String, instruction: String) -> Bool {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let instruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty || !instruction.isEmpty else { return false }
+        return !(RewriteStyle.presets + RewriteStyle.defaultSlots).contains {
+            $0.name == name && $0.instruction == instruction
+        }
+    }
+
     @objc private func presetPicked(_ item: NSMenuItem) {
         guard let row = item.representedObject as? Int, RewriteStyle.presets.indices.contains(item.tag),
               (0..<3).contains(row) else { return }
         let preset = RewriteStyle.presets[item.tag]
-        styleNameFields[row].stringValue = preset.name
-        styleInstructionFields[row].stringValue = preset.instruction
+        func apply() {
+            styleNameFields[row].stringValue = preset.name
+            styleInstructionFields[row].stringValue = preset.instruction
+            formEdited()
+        }
+        guard Self.presetWouldReplaceCustomText(name: styleNameFields[row].stringValue,
+                                                instruction: styleInstructionFields[row].stringValue) else {
+            return apply()
+        }
+        // There is no Undo for the row, so the user's own text is replaced only after a yes.
+        guard let window, window.isVisible, window.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        alert.messageText = "Replace style \(row + 1) with \u{201C}\(preset.name)\u{201D}?"
+        alert.informativeText = "The name and instruction you wrote for this style will be replaced."
+        alert.addButton(withTitle: "Replace")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn { apply() }
+        }
+    }
+
+    /// Any edit makes an earlier "Saved." or "Worked in…" untrue for the form now on screen.
+    @objc private func formEdited() {
+        if statusIsResult { show("", isError: false) }
     }
 
     @objc private func restoreDefaults() {
         fill(RewriteStyle.defaultSlots)
-        show("Defaults restored. Save to keep them.", isError: false)
+        show("Default styles restored. Save to keep them.", isError: false)
     }
 
     // MARK: Load / save
@@ -739,7 +806,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let enabled = !isBusy && !waitingForKeychain
         saveButton.isEnabled = enabled
         testButton.isEnabled = enabled
-        testButton.title = Self.testButtonTitle(provider: selectedProvider, hasModels: selectedCopilotModelID != nil)
+        let hasModels = selectedCopilotModelID != nil
+        testButton.title = Self.testButtonTitle(provider: selectedProvider, hasModels: hasModels)
+        testButton.toolTip = Self.testButtonHelp(provider: selectedProvider, hasModels: hasModels)
+        testButton.setAccessibilityHelp(testButton.toolTip)
     }
 
     private func setBusyUI(_ busy: Bool) {
@@ -877,7 +947,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                     self.updateAPIKeyPlaceholder()
                 }
                 self.savedState = self.formState
-                self.show("Saved.", isError: false)
+                self.show("Saved.", isError: false, result: true)
                 if closeWhenSaved { self.window?.close() }
             case .failed(let message):
                 self.show(message, isError: true)
@@ -912,7 +982,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let generation = testGeneration
         isTesting = true
         setBusyUI(true)
-        show("Testing…", isError: false)
+        show("Sending one sample request…", isError: false)
 
         Task {
             let started = Date()
@@ -939,7 +1009,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             self.setBusyUI(false)
             switch result {
             case .worked(let seconds):
-                self.show(String(format: "Worked in %.1f s.", seconds), isError: false)
+                self.show(String(format: "Worked in %.1f s.", seconds), isError: false, result: true)
             case .failed(let message):
                 self.show(message, isError: true)
             }
@@ -947,7 +1017,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func show(_ message: String, isError: Bool) {
+    private func show(_ message: String, isError: Bool, result: Bool = false) {
+        statusIsResult = result
         statusLabel.textColor = isError ? .systemRed : .secondaryLabelColor
         statusLabel.stringValue = message
         fitWindow()
@@ -961,6 +1032,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 extension SettingsWindowController: NSTextFieldDelegate {
     /// A nonblank key makes Save independent of the presence check.
     func controlTextDidChange(_ obj: Notification) {
+        formEdited()
         updateButtonState()
     }
 }

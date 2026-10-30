@@ -365,6 +365,138 @@ struct SettingsTests {
         expect(focused != nil && focused === field("Style 2 instruction"),
                "Save with an empty style 2 instruction puts the cursor in that field")
 
+        // A fresh window (never shown, so never reloaded) on Custom with a complete, valid form.
+        func customWindow(network: SettingsNetwork = offline) -> (NSWindow, (String) -> NSTextField?, [NSButton]) {
+            let w = SettingsWindowController(
+                store: SettingsStore(defaults: InMemoryDefaults(), hasKey: { false }, saveKey: { _ in }),
+                network: network).window!
+            let all = views(w.contentView!)
+            func f(_ label: String) -> NSTextField? {
+                all.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == label }
+            }
+            let provider = all.compactMap { $0 as? NSSegmentedControl }.first!
+            provider.selectedSegment = 1
+            _ = provider.sendAction(provider.action, to: provider.target)
+            f("Base URL")?.stringValue = "https://api.example.com"
+            f("Model")?.stringValue = "m"
+            f("API key")?.stringValue = "k"
+            for (index, label) in ["1 (default)", "2", "3"].enumerated() {
+                f("Style \(label) name")?.stringValue = "Name \(index)"
+                f("Style \(label) instruction")?.stringValue = "Instruction"
+            }
+            return (w, f, all.compactMap { $0 as? NSButton })
+        }
+        func spin(until done: () -> Bool) {
+            let deadline = Date().addingTimeInterval(3)
+            while !done(), Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        }
+        func edit(_ w: NSWindow, _ field: NSTextField?) {
+            (w.delegate as? NSTextFieldDelegate)?.controlTextDidChange?(
+                Notification(name: NSControl.textDidChangeNotification, object: field))
+        }
+
+        // P2 #8: "Saved." / "Worked in…" disappear on the next edit; they would claim unsaved edits were kept.
+        let keyed = SettingsNetwork(token: { throw SettingsError.missingAPIKey },
+                                    listModels: { _ in [] }, runTest: { _, _, _ in }, storedKey: { "k" })
+        let (savedWindow, savedField, savedButtons) = customWindow(network: keyed)
+        let savedStatus = savedField("Settings status")
+        savedButtons.first { $0.title == "Save" }?.performClick(nil)
+        spin { savedStatus?.stringValue == "Saved." }
+        expect(savedStatus?.stringValue == "Saved.", "valid custom form saves: \(savedStatus?.stringValue ?? "nil")")
+        edit(savedWindow, savedField("Style 2 instruction"))
+        expect(savedStatus?.stringValue == "", "an edit after Save clears \"Saved.\"")
+        savedButtons.first { $0.title == "Test" }?.performClick(nil)
+        spin { savedStatus?.stringValue.hasPrefix("Worked in") == true }
+        expect(savedStatus?.stringValue.hasPrefix("Worked in") == true, "test works: \(savedStatus?.stringValue ?? "nil")")
+        edit(savedWindow, savedField("Base URL"))
+        expect(savedStatus?.stringValue == "", "an edit after Test clears \"Worked in…\"")
+
+        // P2 #10: a preset replaces a blank or preset row at once, but never the user's own text without asking.
+        expect(!SettingsWindowController.presetWouldReplaceCustomText(name: " ", instruction: ""), "blank row: no prompt")
+        let preset = RewriteStyle.presets[0], fallback = RewriteStyle.defaultSlots[1]
+        expect(!SettingsWindowController.presetWouldReplaceCustomText(name: preset.name, instruction: preset.instruction)
+               && !SettingsWindowController.presetWouldReplaceCustomText(name: fallback.name, instruction: fallback.instruction),
+               "preset or default row: no prompt")
+        expect(SettingsWindowController.presetWouldReplaceCustomText(name: preset.name, instruction: "my own words")
+               && SettingsWindowController.presetWouldReplaceCustomText(name: "", instruction: "typed"),
+               "the user's own text asks first")
+        let (presetWindow, presetField, _) = customWindow()
+        let menus = views(presetWindow.contentView!).compactMap { $0 as? NSPopUpButton }
+            .filter { $0.accessibilityLabel()?.hasSuffix("presets") == true }
+        func pick(_ row: Int, _ index: Int) {
+            let item = menus[row].menu!.items.first { $0.tag == index && $0.action != nil }!
+            _ = NSApp.sendAction(item.action!, to: item.target, from: item)
+        }
+        let target = RewriteStyle.presets[2]
+        presetField("Style 2 name")?.stringValue = ""
+        presetField("Style 2 instruction")?.stringValue = ""
+        pick(1, 2)
+        expect(presetField("Style 2 name")?.stringValue == target.name
+               && presetField("Style 2 instruction")?.stringValue == target.instruction, "blank row takes the preset")
+        pick(2, 2)  // row 3 holds "Name 2" / "Instruction": the user's own text
+        expect(presetField("Style 3 name")?.stringValue == "Name 2"
+               && presetField("Style 3 instruction")?.stringValue == "Instruction", "custom row is not overwritten without a yes")
+
+        // P2 #4: the Test button says it spends one request and never sends drafts; Load models says it sends nothing.
+        let (_, _, costButtons) = customWindow()
+        let costHelp = costButtons.first { $0.title == "Test" }?.toolTip ?? ""
+        expect(costHelp.contains("one request") && costHelp.contains("never your drafts"), "Test tooltip: \(costHelp)")
+        let loadHelp = buttons.first { $0.title == "Load models" }?.toolTip ?? ""
+        expect(loadHelp.contains("Nothing is sent to a model"), "Load models tooltip: \(loadHelp)")
+
+        // P2 #6: after Load models the pane shows only login state; "Models loaded…" is in the one status line.
+        let online = SettingsNetwork(token: { "t" }, listModels: { _ in [CopilotAuth.Model(id: "gpt-x", name: "GPT X")] },
+                                     runTest: { _, _, _ in }, storedKey: { nil })
+        let loadWindow = SettingsWindowController(
+            store: SettingsStore(defaults: InMemoryDefaults(), hasKey: { false }, saveKey: { _ in }),
+            network: online).window!
+        let loadViews = views(loadWindow.contentView!)
+        func loadLabel(_ label: String) -> NSTextField? {
+            loadViews.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == label }
+        }
+        loadViews.compactMap { $0 as? NSButton }.first { $0.title == "Load models" }?.performClick(nil)
+        spin { loadLabel("Settings status")?.stringValue == SettingsWindowController.modelsLoadedStatus }
+        expect(loadLabel("Copilot status")?.stringValue == "Using your GitHub login."
+               && loadLabel("Settings status")?.stringValue == SettingsWindowController.modelsLoadedStatus,
+               "pane: \(loadLabel("Copilot status")?.stringValue ?? "nil"); status: \(loadLabel("Settings status")?.stringValue ?? "nil")")
+
+        // P2 #7: a status message appearing (one or two lines) or clearing does not change the window height.
+        let (steadyWindow, steadyField, steadyButtons) = customWindow()
+        let steadyHeight = steadyWindow.frame.height
+        steadyField("Model")?.stringValue = ""
+        steadyButtons.first { $0.title == "Save" }?.performClick(nil)
+        let oneLine = steadyWindow.frame.height
+        steadyField("Model")?.stringValue = "m"
+        steadyField("Base URL")?.stringValue = "http://not-local.example/v1?x=1"
+        steadyButtons.first { $0.title == "Save" }?.performClick(nil)
+        let twoLine = steadyWindow.frame.height
+        expect(steadyField("Settings status")?.stringValue.isEmpty == false && oneLine == steadyHeight && twoLine == steadyHeight,
+               "window height stays \(steadyHeight): \(oneLine), \(twoLine)")
+
+        // P2 #11: the button says it restores styles only and sits on the styles header row.
+        let (restoreWindow, restoreField, restoreButtons) = customWindow()
+        let restore = restoreButtons.first { $0.title == "Restore default styles" }
+        let header = views(restoreWindow.contentView!).compactMap { $0 as? NSTextField }
+            .first { $0.stringValue == "Your three styles" }
+        expect(restore != nil && restore?.superview === header?.superview, "Restore default styles sits beside the styles header")
+        restore?.performClick(nil)
+        expect(restoreField("Style 1 (default) name")?.stringValue == RewriteStyle.defaultSlots[0].name
+               && restoreField("Base URL")?.stringValue == "https://api.example.com"
+               && restoreField("API key")?.stringValue == "k", "restore resets styles only")
+
+        // P2 #12: the model block has a title and a separator divides it from the styles.
+        let sectionViews = (restoreWindow.contentView!.subviews.first as? NSStackView)?.arrangedSubviews ?? []
+        let titleIndex = sectionViews.firstIndex { ($0 as? NSTextField)?.stringValue == "Send drafts to" }
+        let providerIndex = sectionViews.firstIndex { $0 is NSSegmentedControl }
+        let separatorIndex = sectionViews.firstIndex { ($0 as? NSBox)?.boxType == .separator }
+        let stylesIndex = sectionViews.firstIndex { $0 === header?.superview }
+        if let titleIndex, let providerIndex, let separatorIndex, let stylesIndex {
+            expect(titleIndex + 1 == providerIndex && providerIndex < separatorIndex && separatorIndex + 1 == stylesIndex,
+                   "order: title \(titleIndex), provider \(providerIndex), separator \(separatorIndex), styles \(stylesIndex)")
+        } else {
+            expect(false, "model title, separator and styles row exist")
+        }
+
         if failures == 0 {
             print("SELFTEST PASS")
             exit(0)
