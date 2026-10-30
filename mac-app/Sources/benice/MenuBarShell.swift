@@ -6,6 +6,7 @@ import ApplicationServices
 private let trustedPromptKey = "AXTrustedCheckOptionPrompt"
 private let grantedOnceDefaultsKey = "be-nice.accessibility.grantedOnce"
 private let requestedOnceDefaultsKey = "be-nice.accessibility.requestedOnce"
+private let settingsOpenedOnceDefaultsKey = "be-nice.onboarding.settingsOpened"
 private let pollInterval: TimeInterval = 2.0
 
 enum AccessibilityState {
@@ -42,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var statusMenuItem: NSMenuItem?
     private var requestMenuItem: NSMenuItem?
     private var shortcutMenuItem: NSMenuItem?
+    private var modelMenuItem: NSMenuItem?
     private var settingsController: SettingsWindowController?
     private var optimizerController: OptimizerController?
     private var triggerController: TriggerController?
@@ -87,6 +89,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NotificationCenter.default.addObserver(
             self, selector: #selector(pollTick),
             name: NSApplication.didBecomeActiveNotification, object: nil)
+
+        // First launch with no model: open Settings once instead of waiting for a failed rewrite.
+        if FirstRun.opensSettings(provider: SettingsStore().savedProvider(),
+                                  alreadyOpened: UserDefaults.standard.bool(forKey: settingsOpenedOnceDefaultsKey)) {
+            UserDefaults.standard.set(true, forKey: settingsOpenedOnceDefaultsKey)
+            openModelSettings()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -153,6 +162,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         menu.addItem(check)
 
         menu.addItem(.separator())
+        let model = NSMenuItem(title: "Model", action: #selector(openModelSettings), keyEquivalent: "")
+        model.target = self
+        menu.addItem(model)
+        modelMenuItem = model
         let shortcut = NSMenuItem(title: "Rewrite shortcut", action: nil, keyEquivalent: "")
         shortcut.isEnabled = false
         menu.addItem(shortcut)
@@ -176,6 +189,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func updateMenu() {
         statusMenuItem?.title = statusText
+        let store = SettingsStore()
+        modelMenuItem?.title = FirstRun.modelStatus(provider: store.savedProvider(),
+            copilotModel: store.loadCopilotModel(), customModel: store.load().model)
         requestMenuItem?.isHidden = tracker.state == .granted ||
             UserDefaults.standard.bool(forKey: requestedOnceDefaultsKey)
     }
@@ -347,6 +363,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 }
 
+/// First-run guidance: open Settings once when no model is chosen; the menu names the model.
+enum FirstRun {
+    static func opensSettings(provider: Provider?, alreadyOpened: Bool) -> Bool {
+        provider == nil && !alreadyOpened
+    }
+
+    static func modelStatus(provider: Provider?, copilotModel: String, customModel: String) -> String {
+        switch provider {
+        case nil: return "Model: not set up — open Settings…"
+        case .copilot: return "Model: GitHub Copilot (\(copilotModel))"
+        case .custom:
+            let model = customModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            return model.isEmpty ? "Model: Custom, incomplete — open Settings…" : "Model: Custom (\(model))"
+        }
+    }
+}
+
 /// Pure-logic check run by `benice --selftest`; no NSApplication, no TCC call.
 enum ShellSelfCheck {
     static func run() -> Int32 {
@@ -378,6 +411,22 @@ enum ShellSelfCheck {
         expect(persisted.state, .revoked, "persisted grant starts revoked until trust is known")
         persisted.update(trusted: false)
         expect(persisted.state, .revoked, "persisted grant + untrusted = revoked")
+
+        func check(_ ok: Bool, _ label: String) {
+            print(ok ? "PASS \(label)" : "FAIL \(label)")
+            if !ok { failures += 1 }
+        }
+        check(FirstRun.opensSettings(provider: nil, alreadyOpened: false), "first launch without a model opens Settings")
+        check(!FirstRun.opensSettings(provider: nil, alreadyOpened: true), "Settings opens by itself only once")
+        check(!FirstRun.opensSettings(provider: .copilot, alreadyOpened: false), "a chosen model never opens Settings")
+        check(FirstRun.modelStatus(provider: nil, copilotModel: "m", customModel: "") == "Model: not set up — open Settings…",
+              "menu says the model isn't set up")
+        check(FirstRun.modelStatus(provider: .copilot, copilotModel: "gpt-4o-mini", customModel: "")
+                == "Model: GitHub Copilot (gpt-4o-mini)", "menu names the Copilot model")
+        check(FirstRun.modelStatus(provider: .custom, copilotModel: "m", customModel: " llama3 ")
+                == "Model: Custom (llama3)", "menu names the custom model")
+        check(FirstRun.modelStatus(provider: .custom, copilotModel: "m", customModel: "")
+                == "Model: Custom, incomplete — open Settings…", "an incomplete custom model asks for Settings")
 
         return failures == 0 ? 0 : 1
     }

@@ -21,7 +21,10 @@ enum CopilotAuth {
 
         var errorDescription: String? {
             switch self {
-            case .ghNotFound, .notLoggedIn:
+            case .ghNotFound:
+                return "GitHub CLI (gh) isn't installed. Get it from cli.github.com or run `brew install gh`, "
+                    + "then run `gh auth login` in Terminal and try again."
+            case .notLoggedIn:
                 return "GitHub login not found. Run `gh auth login` in Terminal first, then try again."
             case .models(let message):
                 return "Couldn't load Copilot models: \(message)"
