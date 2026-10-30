@@ -411,6 +411,32 @@ struct SettingsTests {
         edit(savedWindow, savedField("Base URL"))
         expect(savedStatus?.stringValue == "", "an edit after Test clears \"Worked in…\"")
 
+        // P2 #10: a preset replaces a blank or preset row at once, but never the user's own text without asking.
+        expect(!SettingsWindowController.presetWouldReplaceCustomText(name: " ", instruction: ""), "blank row: no prompt")
+        let preset = RewriteStyle.presets[0], fallback = RewriteStyle.defaultSlots[1]
+        expect(!SettingsWindowController.presetWouldReplaceCustomText(name: preset.name, instruction: preset.instruction)
+               && !SettingsWindowController.presetWouldReplaceCustomText(name: fallback.name, instruction: fallback.instruction),
+               "preset or default row: no prompt")
+        expect(SettingsWindowController.presetWouldReplaceCustomText(name: preset.name, instruction: "my own words")
+               && SettingsWindowController.presetWouldReplaceCustomText(name: "", instruction: "typed"),
+               "the user's own text asks first")
+        let (presetWindow, presetField, _) = customWindow()
+        let menus = views(presetWindow.contentView!).compactMap { $0 as? NSPopUpButton }
+            .filter { $0.accessibilityLabel()?.hasSuffix("presets") == true }
+        func pick(_ row: Int, _ index: Int) {
+            let item = menus[row].menu!.items.first { $0.tag == index && $0.action != nil }!
+            _ = NSApp.sendAction(item.action!, to: item.target, from: item)
+        }
+        let target = RewriteStyle.presets[2]
+        presetField("Style 2 name")?.stringValue = ""
+        presetField("Style 2 instruction")?.stringValue = ""
+        pick(1, 2)
+        expect(presetField("Style 2 name")?.stringValue == target.name
+               && presetField("Style 2 instruction")?.stringValue == target.instruction, "blank row takes the preset")
+        pick(2, 2)  // row 3 holds "Name 2" / "Instruction": the user's own text
+        expect(presetField("Style 3 name")?.stringValue == "Name 2"
+               && presetField("Style 3 instruction")?.stringValue == "Instruction", "custom row is not overwritten without a yes")
+
         if failures == 0 {
             print("SELFTEST PASS")
             exit(0)

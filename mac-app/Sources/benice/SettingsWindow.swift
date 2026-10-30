@@ -658,13 +658,39 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// True when a row holds text the user wrote (not blank, not a preset or default): a preset pick asks first.
+    static func presetWouldReplaceCustomText(name: String, instruction: String) -> Bool {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let instruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty || !instruction.isEmpty else { return false }
+        return !(RewriteStyle.presets + RewriteStyle.defaultSlots).contains {
+            $0.name == name && $0.instruction == instruction
+        }
+    }
+
     @objc private func presetPicked(_ item: NSMenuItem) {
         guard let row = item.representedObject as? Int, RewriteStyle.presets.indices.contains(item.tag),
               (0..<3).contains(row) else { return }
         let preset = RewriteStyle.presets[item.tag]
-        styleNameFields[row].stringValue = preset.name
-        styleInstructionFields[row].stringValue = preset.instruction
-        formEdited()
+        func apply() {
+            styleNameFields[row].stringValue = preset.name
+            styleInstructionFields[row].stringValue = preset.instruction
+            formEdited()
+        }
+        guard Self.presetWouldReplaceCustomText(name: styleNameFields[row].stringValue,
+                                                instruction: styleInstructionFields[row].stringValue) else {
+            return apply()
+        }
+        // There is no Undo for the row, so the user's own text is replaced only after a yes.
+        guard let window, window.isVisible, window.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        alert.messageText = "Replace style \(row + 1) with \u{201C}\(preset.name)\u{201D}?"
+        alert.informativeText = "The name and instruction you wrote for this style will be replaced."
+        alert.addButton(withTitle: "Replace")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn { apply() }
+        }
     }
 
     /// Any edit makes an earlier "Saved." or "Worked in…" untrue for the form now on screen.
