@@ -437,6 +437,13 @@ struct SettingsTests {
         expect(presetField("Style 3 name")?.stringValue == "Name 2"
                && presetField("Style 3 instruction")?.stringValue == "Instruction", "custom row is not overwritten without a yes")
 
+        // P2 #4: the Test button says it spends one request and never sends drafts; Load models says it sends nothing.
+        let (_, _, costButtons) = customWindow()
+        let costHelp = costButtons.first { $0.title == "Test" }?.toolTip ?? ""
+        expect(costHelp.contains("one request") && costHelp.contains("never your drafts"), "Test tooltip: \(costHelp)")
+        let loadHelp = buttons.first { $0.title == "Load models" }?.toolTip ?? ""
+        expect(loadHelp.contains("Nothing is sent to a model"), "Load models tooltip: \(loadHelp)")
+
         if failures == 0 {
             print("SELFTEST PASS")
             exit(0)

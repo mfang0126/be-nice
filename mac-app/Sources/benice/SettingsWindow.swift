@@ -597,6 +597,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         provider == .copilot && !hasModels ? "Load models" : "Test"
     }
 
+    /// Test spends one real request; say so where the button is (tooltip and VoiceOver help).
+    static func testButtonHelp(provider: Provider, hasModels: Bool) -> String {
+        testButtonTitle(provider: provider, hasModels: hasModels) == "Load models"
+            ? "Checks your GitHub login and loads the model list. Nothing is sent to a model."
+            : "Sends one sample message to the selected model, never your drafts. This uses one request."
+    }
+
     private func refreshCopilot(loadedByTest: Bool = false) {
         copilotGeneration &+= 1
         let generation = copilotGeneration
@@ -777,7 +784,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let enabled = !isBusy && !waitingForKeychain
         saveButton.isEnabled = enabled
         testButton.isEnabled = enabled
-        testButton.title = Self.testButtonTitle(provider: selectedProvider, hasModels: selectedCopilotModelID != nil)
+        let hasModels = selectedCopilotModelID != nil
+        testButton.title = Self.testButtonTitle(provider: selectedProvider, hasModels: hasModels)
+        testButton.toolTip = Self.testButtonHelp(provider: selectedProvider, hasModels: hasModels)
+        testButton.setAccessibilityHelp(testButton.toolTip)
     }
 
     private func setBusyUI(_ busy: Bool) {
@@ -950,7 +960,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let generation = testGeneration
         isTesting = true
         setBusyUI(true)
-        show("Testing…", isError: false)
+        show("Sending one sample request…", isError: false)
 
         Task {
             let started = Date()
