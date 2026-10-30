@@ -1,5 +1,6 @@
 import ApplicationServices
 import CoreGraphics
+import AppKit
 import Foundation
 
 /// Deterministic checks for TriggerController's pure policy/geometry. No
@@ -193,6 +194,44 @@ struct TriggerTests {
         expect(TriggerGeometry.buttonFrame(field: .zero,
             within: CGRect(x: -50, y: -50, width: 50, height: 20)) == nil,
                "Rewrite hides when the visible area cannot fit the button")
+
+        // A shortcut that can't fire says why and what to do (full-flow UX review #1).
+        let slackSupport = TriggerPolicy.appSupport(bundleID: TriggerPolicy.slackBundleID)
+        expect(ShortcutRefusal(trusted: false, secureInput: false, appSupport: slackSupport) == .noAccessibility,
+               "untrusted is reported first")
+        expect(ShortcutRefusal(trusted: true, secureInput: true, appSupport: slackSupport) == .secureInput,
+               "secure input is reported before the app check")
+        expect(ShortcutRefusal(trusted: true, secureInput: false,
+                               appSupport: TriggerPolicy.appSupport(bundleID: "com.apple.TextEdit")) == .unsupportedApp,
+               "a non-Slack app is unsupported")
+        expect(ShortcutRefusal(trusted: true, secureInput: false, appSupport: nil) == .unsupportedApp,
+               "no frontmost bundle is unsupported")
+        expect(ShortcutRefusal(trusted: true, secureInput: false, appSupport: slackSupport) == .noTextField,
+               "Slack without a focused message box asks for a click into it")
+        for refusal in [ShortcutRefusal.noAccessibility, .secureInput, .unsupportedApp, .noTextField] {
+            expect(refusal.message.count > 20 && refusal.message.hasSuffix("."), "\(refusal) has a full sentence")
+        }
+        expect(ShortcutRefusal.noAccessibility.message.contains("menu bar"), "untrusted says where to turn it on")
+        expect(ShortcutRefusal.unsupportedApp.message.contains("Slack"), "unsupported names Slack")
+        expect(ShortcutRefusal.noTextField.message.contains("message box"), "no field says where to click")
+
+        // The trigger path reports a refusal instead of returning silently. This process is never
+        // Slack, so whatever its Accessibility state, the shortcut must be refused with a reason.
+        MainActor.assumeIsolated {
+            let controller = TriggerController(handler: { _ in expect(false, "a test process never fires a target") })
+            var refused: [ShortcutRefusal] = []
+            controller.onRefused = { refused.append($0) }
+            controller.requestTrigger()
+            expect(refused.isEmpty, "a stopped controller stays silent")
+            controller.start()
+            controller.requestTrigger()
+            let deadline = Date().addingTimeInterval(2)
+            while refused.isEmpty, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+            controller.stop()
+            if NSWorkspace.shared.frontmostApplication?.bundleIdentifier != TriggerPolicy.slackBundleID {
+                expect(refused.count == 1, "the shortcut is refused once with a reason, got \(refused)")
+            }
+        }
 
         if failures == 0 {
             print("SELFTEST PASS")

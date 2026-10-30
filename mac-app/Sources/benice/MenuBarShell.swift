@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         triggers.start()
         updateShortcutMenu()
         updateStatusItem()
+        triggers.onRefused = { [weak self] in self?.optimizerController?.showNotice($0.message) }
         updateMenu()
 
         // Initial state comes from the persisted flag; the real state is then

@@ -245,6 +245,16 @@ final class OptimizerController {
         showStatus(message, anchor: pendingTarget?.anchorRect ?? .zero)
     }
 
+    /// A one-off notice by the mouse (no field to anchor to), e.g. why the shortcut did nothing.
+    func showNotice(_ message: String) {
+        // Our own window is in front (e.g. the rewrite window): the shortcut isn't meant for Slack.
+        guard !busy, NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier
+        else { return }
+        reanchor?.cancel()
+        let mouse = NSEvent.mouseLocation
+        statusWindow.show(message, target: CGRect(x: mouse.x, y: mouse.y, width: 1, height: 1), undo: nil, cancel: nil)
+    }
+
     /// `refresh` re-reads the composer shortly after: Slack can resize it a frame after the text changes.
     private func showStatus(_ message: String, anchor: CGRect, refresh: (() -> CGRect)? = nil) {
         statusWindow.show(message, target: anchor,

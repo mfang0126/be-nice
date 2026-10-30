@@ -120,6 +120,31 @@ enum TriggerPolicy {
     }
 }
 
+/// Why a shortcut press found no target; shown instead of failing silently.
+enum ShortcutRefusal: Equatable, Sendable {
+    case noAccessibility, secureInput, unsupportedApp, noTextField
+
+    init(trusted: Bool, secureInput: Bool, appSupport: AppSupport?) {
+        if !trusted { self = .noAccessibility }
+        else if secureInput { self = .secureInput }
+        else if appSupport == .selection || appSupport == .wholeValue { self = .noTextField }
+        else { self = .unsupportedApp }
+    }
+
+    var message: String {
+        switch self {
+        case .noAccessibility:
+            "Be Nice needs Accessibility to read Slack's message box. Turn it on from the Be Nice menu bar icon."
+        case .secureInput:
+            "A password field has secure input on, so Be Nice can't read text. Close it, then try again."
+        case .unsupportedApp:
+            "Be Nice works in Slack only. Switch to Slack, click into the message box and try again."
+        case .noTextField:
+            "Click into the Slack message box, then press the shortcut again."
+        }
+    }
+}
+
 // MARK: - Geometry (pure, self-checked)
 
 enum TriggerGeometry {
@@ -464,6 +489,8 @@ final class TriggerController {
     }
 
     typealias Handler = @MainActor (Target) -> Void
+    /// A trigger that found no target reports why, so the shell can say so.
+    var onRefused: ((ShortcutRefusal) -> Void)?
 
     private static let refreshInterval: TimeInterval = 0.5
     private static let triggerDebounce: TimeInterval = 0.35
@@ -660,13 +687,17 @@ final class TriggerController {
         requestTrigger()
     }
 
-    private func requestTrigger() {
+    func requestTrigger() {
         guard isRunning, acceptTriggerTime() else { return }
         requestTarget { [weak self] target in
-            guard let self, self.isRunning, let target,
-                  AXIsProcessTrusted(), !IsSecureEventInputEnabled(),
-                  NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid
-            else { return }
+            guard let self, self.isRunning else { return }
+            let trusted = AXIsProcessTrusted(), secure = IsSecureEventInputEnabled()
+            let front = NSWorkspace.shared.frontmostApplication
+            guard let target, trusted, !secure, front?.processIdentifier == target.pid else {
+                self.onRefused?(ShortcutRefusal(trusted: trusted, secureInput: secure,
+                    appSupport: front.map { TriggerPolicy.appSupport(bundleID: $0.bundleIdentifier) }))
+                return
+            }
             self.handler(target)
         }
     }
