@@ -268,7 +268,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
     private let presentsWindows: Bool
     private let copyText: (String) -> Bool
     private var copyOnlyReason: String?
-    private let copyOnlyHelp = "You can view, edit or copy this rewrite, but not replace."
+    private let copyOnlyHelp = "Be Nice won't replace it: edit if you like, then ⌘↩ copies it for you to paste."
     private let hintText = "⌘↩ replace · esc close · nothing is sent"
     private var options: [RewriteOption] = []
     private var selected = 0
@@ -456,7 +456,8 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
     private func copyCandidate() {
         guard active, !busy, regenerating == nil, cards.indices.contains(selected) else { return }
         let copied = copyText(cards[selected].text.string)
-        setNotice(copied ? "Copied." : "Copy failed. Try again.", isError: !copied)
+        setNotice(copied ? "Copied. Press esc to go back to Slack, then ⌘A and ⌘V to paste it over your draft."
+                         : "Copy failed. Try again.", isError: !copied)
     }
 
     @objc private func cancel() {
@@ -466,7 +467,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
         callback?()
     }
 
-    /// Esc closes, ⌘↩ replaces. ←/→ switch cards and Return enters the editor only while focus is NOT
+    /// Esc closes, ⌘↩ replaces (copies in copy-only). ←/→ switch cards and Return enters the editor only while focus is NOT
     /// inside the editor, so caret movement and newlines in the text are never hijacked; Tab/click
     /// leave or enter the editor.
     func handleKey(_ event: NSEvent) -> Bool {
@@ -479,7 +480,7 @@ final class RewriteWindowController: NSWindowController, NSWindowDelegate, NSTex
             cancel(); return true
         }
         if isReturn, modifiers == .command {
-            if copyOnlyReason == nil { submit() }
+            if copyOnlyReason == nil { submit() } else { copyCandidate() }
             return true
         }
         guard modifiers.isEmpty, !((window?.firstResponder as? NSTextView)?.isEditable ?? false) else { return false }
