@@ -199,6 +199,23 @@ final class OptimizerController {
         }
     }
 
+    /// While the "Replaced" pill is up, drop its Undo once the draft is edited or sent:
+    /// undo would refuse then anyway. The menu's Undo Last Replace still re-checks on its own.
+    private func watchUndo(_ core: WriteBackController) {
+        undoWatch?.cancel()
+        undoWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let self, !Task.isCancelled, self.recovery === core, !self.busy,
+                      self.statusWindow.isVisible, self.statusWindow.buttonTitles.contains("Undo") else { return }
+                if await core.undoStillMatches { continue }
+                guard !Task.isCancelled, self.recovery === core, !self.busy else { return }
+                self.statusWindow.dropUndo()
+                return
+            }
+        }
+    }
+
     /// Activate only the captured app. The core still checks focused element,
     /// original text and selection; never force focus onto a different document.
     private func restoreFocus(_ target: TriggerController.Target) async -> Bool {
@@ -245,23 +262,6 @@ final class OptimizerController {
         pending = nil
         shown = nil
         showStatus(message, anchor: pendingTarget?.anchorRect ?? .zero)
-    }
-
-    /// While the "Replaced" pill is up, drop its Undo once the draft is edited or sent:
-    /// undo would refuse then anyway. The menu's Undo Last Replace still re-checks on its own.
-    private func watchUndo(_ core: WriteBackController) {
-        undoWatch?.cancel()
-        undoWatch = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(500))
-                guard let self, !Task.isCancelled, self.recovery === core, !self.busy,
-                      self.statusWindow.isVisible, self.statusWindow.buttonTitles.contains("Undo") else { return }
-                if await core.undoStillMatches { continue }
-                guard !Task.isCancelled, self.recovery === core, !self.busy else { return }
-                self.statusWindow.dropUndo()
-                return
-            }
-        }
     }
 
     /// `refresh` re-reads the composer shortly after: Slack can resize it a frame after the text changes.
