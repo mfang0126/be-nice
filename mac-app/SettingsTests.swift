@@ -484,6 +484,19 @@ struct SettingsTests {
                && restoreField("Base URL")?.stringValue == "https://api.example.com"
                && restoreField("API key")?.stringValue == "k", "restore resets styles only")
 
+        // P2 #12: the model block has a title and a separator divides it from the styles.
+        let sectionViews = (restoreWindow.contentView!.subviews.first as? NSStackView)?.arrangedSubviews ?? []
+        let titleIndex = sectionViews.firstIndex { ($0 as? NSTextField)?.stringValue == "Send drafts to" }
+        let providerIndex = sectionViews.firstIndex { $0 is NSSegmentedControl }
+        let separatorIndex = sectionViews.firstIndex { ($0 as? NSBox)?.boxType == .separator }
+        let stylesIndex = sectionViews.firstIndex { $0 === header?.superview }
+        if let titleIndex, let providerIndex, let separatorIndex, let stylesIndex {
+            expect(titleIndex + 1 == providerIndex && providerIndex < separatorIndex && separatorIndex + 1 == stylesIndex,
+                   "order: title \(titleIndex), provider \(providerIndex), separator \(separatorIndex), styles \(stylesIndex)")
+        } else {
+            expect(false, "model title, separator and styles row exist")
+        }
+
         if failures == 0 {
             print("SELFTEST PASS")
             exit(0)

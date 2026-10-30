@@ -471,6 +471,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         copilotModelPopup.action = #selector(formEdited)
         copilotModelPopup.widthAnchor.constraint(equalToConstant: 260).isActive = true
 
+        // Two titled sections: where drafts go, then the styles.
+        let modelHeader = NSTextField(labelWithString: "Send drafts to")
+        modelHeader.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+        let sectionSeparator = NSBox()
+        sectionSeparator.boxType = .separator
+        sectionSeparator.widthAnchor.constraint(equalToConstant: Self.contentWidth).isActive = true
         let stylesHeader = NSTextField(labelWithString: "Your three styles")
         stylesHeader.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
         let slotNames = ["1 (default)", "2", "3"]
@@ -531,11 +537,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         buttons.insertArrangedSubview(pushRight, at: 0)  // Close, Test and Save sit at the right, Save last
 
         let stack = NSStackView(views: [
-            providerControl, copilotPane, customPane, stylesHeaderRow, stylesGrid, statusLabel, buttons,
+            modelHeader, providerControl, copilotPane, customPane, sectionSeparator, stylesHeaderRow, stylesGrid,
+            statusLabel, buttons,
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
+        stack.setCustomSpacing(8, after: modelHeader)
         stack.setCustomSpacing(8, after: stylesHeaderRow)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
