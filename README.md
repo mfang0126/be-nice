@@ -42,7 +42,7 @@ You can also change the three rewrite styles in Settings: each has a name and on
 1. Type a draft in Slack.
 2. Click the **Rewrite** button above Slack's message box, or press **⌃⌥⌘Space**.
 3. Choose a version, edit if you like. To change one version, click its style name, or type how it should change ("more polite") and press Return. Then confirm to replace the draft.
-4. Click **Undo** to get your original back.
+4. Click **Undo** on the "Replaced" notice to get your original back. The notice hides after a few seconds (hover to keep it); **Undo Last Replace** in the menu-bar menu still works after that.
 
 ## Build from source
 

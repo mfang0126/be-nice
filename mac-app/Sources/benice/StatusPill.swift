@@ -16,6 +16,11 @@ final class RewriteStatusController {
     private let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 140, height: 36),
         styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
     private var undoAction: (() -> Void)?
+    /// A success pill hides itself after this long; hovering pauses it. Errors and loading stay.
+    var successLifetime: TimeInterval = 6
+    private var hideTimer: Timer?
+    private var hovering = false
+    private var last: (message: String, target: CGRect, kind: Kind)?
     private var cancelAction: (() -> Void)?
     private(set) var buttonTitles: [String] = []
     var frame: NSRect { panel.frame }
@@ -58,11 +63,13 @@ final class RewriteStatusController {
         if kind == .loading { titles = ["Cancel"] }
         else {
             if undo != nil { titles.append("Undo") }
-            if kind == .error || undo == nil { titles.append("Dismiss") }
+            titles.append("Dismiss")
         }
+        last = (message, target, kind)
         buttonTitles = titles
         let size = Self.size(message: message, buttons: titles)
-        let root = NSView(frame: NSRect(origin: .zero, size: size))
+        let root = HoverView(frame: NSRect(origin: .zero, size: size))
+        root.onHover = { [weak self] in self?.hoverChanged($0) }
         root.wantsLayer = true
         root.layer?.backgroundColor = NSColor(srgbRed: 0x1D / 255, green: 0x1C / 255, blue: 0x1D / 255, alpha: 1).cgColor
         root.layer?.cornerRadius = size.height / 2
@@ -110,6 +117,32 @@ final class RewriteStatusController {
 
         place(target, size: size)
         panel.orderFrontRegardless()
+        hovering = false
+        scheduleHide()
+    }
+
+    var isVisible: Bool { panel.isVisible }
+
+    /// Undo can no longer work (the draft changed or was sent): keep the message, drop the button.
+    func dropUndo() {
+        guard panel.isVisible, undoAction != nil, let last else { return }
+        show(last.message, target: last.target, undo: nil, cancel: nil)
+    }
+
+    func hoverChanged(_ inside: Bool) {
+        hovering = inside
+        scheduleHide()
+    }
+
+    private func scheduleHide() {
+        hideTimer?.invalidate()
+        hideTimer = nil
+        guard !hovering, panel.isVisible, last?.kind == .success else { return }
+        let timer = Timer(timeInterval: successLifetime, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hide() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        hideTimer = timer
     }
 
     private func place(_ target: CGRect, size: CGSize) {
@@ -125,10 +158,15 @@ final class RewriteStatusController {
     /// Moves a visible pill to a re-measured anchor; never shows a hidden one, never jumps on an unreadable rect.
     func reanchor(_ target: CGRect) {
         guard panel.isVisible, !target.isEmpty else { return }
+        last?.target = target  // a later dropUndo re-shows it here
         place(target, size: panel.frame.size)
     }
 
-    func hide() { panel.orderOut(nil) }
+    func hide() {
+        hideTimer?.invalidate()
+        hideTimer = nil
+        panel.orderOut(nil)
+    }
     @objc func performUndo() { undoAction?() }
     @objc func performClose() { if let cancelAction { cancelAction() } else { hide() } }
 
@@ -159,4 +197,19 @@ final class RewriteStatusController {
             .foregroundColor: NSColor(srgbRed: 0x1D / 255, green: 0x1C / 255, blue: 0x1D / 255, alpha: 1)])
         return b
     }
+}
+
+/// Reports the pointer entering and leaving, so a self-hiding pill waits while it is being read.
+private final class HoverView: NSView {
+    var onHover: ((Bool) -> Void)?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
 }

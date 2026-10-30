@@ -25,7 +25,7 @@ struct StatusPillTests {
                                                size: CGSize(width: 175, height: 32))
         expect(narrow == CGRect(x: 425, y: 366, width: 175, height: 32),
                "too narrow for both: pill takes the button's spot (got \(String(describing: narrow)))")
-        expect(c.buttonTitles == ["Undo"], "replaced shows only Undo: \(c.buttonTitles)")
+        expect(c.buttonTitles == ["Undo", "Dismiss"], "replaced shows Undo and Dismiss: \(c.buttonTitles)")
         buttons(c.contentView!).first { $0.accessibilityLabel() == "Undo" }?.performClick(nil)
         expect(undone == 1, "undo callback fires")
 
@@ -45,6 +45,31 @@ struct StatusPillTests {
         c.show("The draft changed. Rewrite it again.", target: field, undo: nil, cancel: nil)
         expect(c.buttonTitles == ["Dismiss"], "error shows Dismiss")
         buttons(c.contentView!).first { $0.accessibilityLabel() == "Dismiss" }?.performClick(nil)
+
+        // Success hides itself; hovering pauses the countdown; Dismiss and dropUndo work.
+        func spin(_ seconds: TimeInterval) { RunLoop.main.run(until: Date().addingTimeInterval(seconds)) }
+        let auto = RewriteStatusController()
+        auto.successLifetime = 0.2
+        auto.show("Replaced", target: field, undo: {}, cancel: nil)
+        expect(auto.isVisible, "success pill is shown")
+        auto.hoverChanged(true)
+        spin(0.4)
+        expect(auto.isVisible, "hovering keeps the pill")
+        auto.hoverChanged(false)
+        spin(0.4)
+        expect(!auto.isVisible, "success pill hides itself after its lifetime")
+        auto.show("Replaced", target: field, undo: {}, cancel: nil)
+        auto.dropUndo()
+        expect(auto.buttonTitles == ["Dismiss"] && auto.isVisible, "dropUndo keeps the pill without Undo: \(auto.buttonTitles)")
+        buttons(auto.contentView!).first { $0.accessibilityLabel() == "Dismiss" }?.performClick(nil)
+        expect(!auto.isVisible, "Dismiss hides a success pill")
+        auto.show("The draft changed. Rewrite it again.", target: field, undo: nil, cancel: nil)
+        spin(0.4)
+        expect(auto.isVisible, "errors stay until dismissed")
+        auto.show("Rewriting…", target: field, undo: nil, cancel: {})
+        spin(0.4)
+        expect(auto.isVisible, "loading stays")
+        auto.hide()
 
         // Width bounds.
         let short = RewriteStatusController.size(message: "好", buttons: ["Dismiss"])
