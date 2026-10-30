@@ -13,7 +13,7 @@ A macOS menu-bar app for the Slack desktop app. You write a draft as usual; Be N
 Early preview (v0.2.0).
 
 - Verified in real Slack: channels, threads and direct messages with plain-text drafts, including Chinese drafts.
-- Drafts with rich content (links, mentions, lists, formatting, emoji) are copy-only: Be Nice never replaces them, and you can only copy the result. Paragraph layout (single lines, Shift+Return lines, paragraphs separated by one blank line) is kept on Replace and Undo; if the layout can't be read safely, Be Nice offers copy only.
+- Drafts with rich content (links, mentions, lists, formatting, emoji) are copy-only: Be Nice never replaces them. Press ⌘↩ (or **Copy rewrite**) to copy the result, go back to Slack, then ⌘A and ⌘V to paste it over your draft. Paragraph layout (single lines, Shift+Return lines, paragraphs separated by one blank line) is kept on Replace and Undo; if the layout can't be read safely, Be Nice offers copy only.
 - Slack only: other apps are not supported. Real Chinese IME composition, emoji, and same-name conversations are not yet verified.
 - If Be Nice can't safely confirm the target message box, it refuses to replace and offers copy only.
 

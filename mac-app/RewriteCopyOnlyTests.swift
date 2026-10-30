@@ -60,20 +60,22 @@ struct RewriteCopyOnlyTests {
         expect(editor().isEditable, "copy-only still allows editing")
         editor().string = "用户编辑的全文\nwith newline"
         commandReturn()
-        expect(submitted.isEmpty && copied.isEmpty, "keyboard replace cannot bypass copy-only and never copies implicitly")
+        expect(submitted.isEmpty && copied == ["用户编辑的全文\nwith newline"], "command Return copies in copy-only, never submits")
+        expect(statusView().string.contains("Copied") && statusView().string.contains("⌘V"),
+               "after copying, the status says how to paste it back: \(statusView().string)")
         let focusedCard = descendants(controller.window!.contentView!).first { $0.identifier?.rawValue == "card-1" }!
         _ = controller.window!.makeFirstResponder(focusedCard)
         commandReturn()
-        expect(submitted.isEmpty && copied.isEmpty, "command Return on a focused card never submits in copy-only")
+        expect(submitted.isEmpty && copied.count == 2, "command Return on a focused card copies, never submits")
         click("primary")
         expect(submitted.isEmpty, "primary button never submits in copy-only")
-        expect(copied == ["用户编辑的全文\nwith newline"], "primary copies exact edited candidate")
+        expect(copied.count == 3 && copied.last == "用户编辑的全文\nwith newline", "primary copies exact edited candidate")
         pick(0)
         expect(editor().string == "First candidate", "other candidate remains independent")
         pick(1)
         expect(editor().string == "用户编辑的全文\nwith newline", "edited candidate survives navigation")
-        expect(statusView().string.contains("but not replace") && statusView().string.contains("view, edit or copy"),
-               "copy-only explanation persists through navigation")
+        expect(statusView().string.contains("won't replace") && statusView().string.contains("⌘↩ copies"),
+               "copy-only explanation persists through navigation: \(statusView().string)")
         let root = controller.window!.contentView!
         root.layoutSubtreeIfNeeded()
         let controls = ["cancel", "primary"].map(button)
@@ -123,7 +125,7 @@ struct RewriteCopyOnlyTests {
         expect(cancelled == 1, "copy-only can cancel")
         present()
         expect(button("primary").title == "Replace with Direct", "new generation resets copy-only state")
-        expect(copied.count == 2, "no lifecycle action copies implicitly")
+        expect(copied.count == 5, "only command Return and the Copy button copy, nothing else: \(copied.count)")
         controller.dismiss()
         if failures == 0 { print("RewriteCopyOnlyTests PASS"); exit(0) }
         print("RewriteCopyOnlyTests FAILED (\(failures))"); exit(1)
