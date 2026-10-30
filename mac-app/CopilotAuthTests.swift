@@ -94,6 +94,10 @@ struct CopilotAuthTests {
         expectAuth(.notLoggedIn, "token: failed run") { try A.token() }
         A.isExecutable = { _ in false }
         expectAuth(.ghNotFound, "token: no candidates") { try A.token() }
+        let missing = A.AuthError.ghNotFound.localizedDescription
+        expect(missing.contains("cli.github.com") && missing.contains("brew install gh") && missing.contains("gh auth login"),
+               "missing gh says how to install it, then log in: \(missing)")
+        expect(!A.AuthError.notLoggedIn.localizedDescription.contains("install"), "installed but logged out only asks for a login")
         A.isExecutable = { $0 == "/opt/homebrew/bin/gh" || $0 == "/usr/local/bin/gh" }
         A.runGh = { path, _ in path == "/usr/local/bin/gh" ? "ghp_second0123456789abcdefg" : nil }
         expect((try? A.token()) == "ghp_second0123456789abcdefg", "token: failed candidate falls through to the next")

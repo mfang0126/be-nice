@@ -742,7 +742,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         apiKeyField.stringValue = ""
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.stringValue = store.savedProvider() == nil
-            ? "Choose where your drafts are sent. Nothing is sent until you Save." : ""
+            ? "Welcome to Be Nice. Choose where your drafts are sent and click Save; nothing is sent until you do." : ""
         loadSlots()
 
         hasStoredKey = false

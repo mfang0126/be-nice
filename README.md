@@ -28,7 +28,7 @@ Built for macOS 13 or later; so far tested on macOS 26 only.
 
 ## Setup
 
-Open **Settings** from the menu-bar icon and pick a model source. **Nothing is sent until you choose a provider and click Save.**
+**Settings** opens by itself the first time; later, open it from the menu-bar icon (the menu also shows which model is set up). Pick a model source. **Nothing is sent until you choose a provider and click Save.**
 
 - **GitHub Copilot**: uses the GitHub login already on your Mac. Install the [GitHub CLI](https://cli.github.com) and run `gh auth login` in Terminal once; Be Nice never signs you in or out and never stores the token. Pick a model from the list (the fast `gpt-4o-mini` is preselected when your plan has it). Copilot's chat API is not publicly documented by GitHub, so this may change.
 - **Custom**: any OpenAI-compatible endpoint (`/v1/chat/completions`): base URL, API key (stored in your Keychain) and model name. Ollama or LM Studio on your own machine work too.
