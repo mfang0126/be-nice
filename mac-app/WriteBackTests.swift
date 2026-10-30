@@ -102,10 +102,16 @@ struct WriteBackTests {
                    "apply rechecks even after generation validation")
             await core.cancel()
             expect(await core.undoAvailable, "stale generation and cancellation preserve prior undo")
+            expect(await core.undoStillMatches == false, "an edited draft can't be undone, so the pill drops Undo")
             expect(await core.undo() == .failed(.targetChanged(.valueChanged)),
                    "undo refuses subsequent user edits")
             access.storedValue = "Whole rewritten draft"
+            expect(await core.undoStillMatches, "the replaced draft back in the box can be undone")
+            let writes = access.writes.count
+            _ = await core.undoStillMatches
+            expect(access.writes.count == writes, "checking undo never writes")
             expect(await core.undo() == .restored, "prior undo still restores exact original")
+            expect(await core.undoStillMatches == false, "nothing left to undo after restore")
             expect(access.storedValue == "hello world", "whole draft undo preserves original")
         }
 

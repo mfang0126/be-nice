@@ -470,6 +470,14 @@ public actor WriteBackController {
     /// flight. A possible-write record survives failed applies, so this can be
     /// true while `state` is `.failed`. Undo re-verifies the target, so a
     /// changed document is refused rather than overwritten.
+    /// The box still holds what we wrote, so Undo can work. Reads the value only: no refocus,
+    /// no write. `undo()` re-verifies everything anyway; this just decides whether to offer it.
+    public var undoStillMatches: Bool {
+        guard undoAvailable, let record = undoRecord,
+              let current = access.value(of: record.target.element) else { return false }
+        return current == record.pendingValue || current == record.appliedValue
+    }
+
     public var undoAvailable: Bool {
         guard undoRecord != nil else { return false }
         switch state {

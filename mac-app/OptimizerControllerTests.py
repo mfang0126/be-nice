@@ -37,6 +37,8 @@ actor WriteBackController {
     var writes = 0
     var cancellations = 0
     var succeed = false
+    var undoStillMatches = true
+    func setMatches(_ value: Bool) { undoStillMatches = value }
     func setSucceed(_ value: Bool) { succeed = value }
     func apply(replacement: String) -> ApplyOutcome { writes += 1; return succeed ? .applied : .failed(.targetChanged(.notFrontmost)) }
     func undo() -> UndoOutcome { succeed ? .restored : .failed(.targetChanged(.notFrontmost)) }
@@ -64,6 +66,10 @@ actor WriteBackController {
 @MainActor final class Status {
     var shown: [CGRect] = []
     var reanchored: [CGRect] = []
+    var isVisible = true
+    var buttonTitles = ["Undo"]
+    var dropped = 0
+    func dropUndo() { dropped += 1; buttonTitles = ["Dismiss"] }
     func hide() {}
     func show(_ message: String, target: CGRect, undo: (() -> Void)?, cancel: (() -> Void)?) { shown.append(target) }
     func reanchor(_ target: CGRect) { reanchored.append(target) }
@@ -80,12 +86,13 @@ actor WriteBackController {
     var shown: (original: String, options: [String])?
     var uncertainWrite = false
     var reanchor: Task<Void, Never>?
+    var undoWatch: Task<Void, Never>?
     var generation: UInt64 = 7
     var busy = false
     var restored = true
     func restoreFocus(_ target: TriggerController.Target) async -> Bool { restored }
 '''
-harness += method("apply") + "\n" + method("cancelPreview") + "\n" + method("showStatus") + "\n" + method("undoLast") + "\n}\n"
+harness += method("apply") + "\n" + method("cancelPreview") + "\n" + method("showStatus") + "\n" + method("undoLast") + "\n" + method("watchUndo") + "\n}\n"
 harness += r'''
 @main struct Tests {
     @MainActor static func main() async {
@@ -165,6 +172,19 @@ harness += r'''
         steady.showStatus("Restored", anchor: stale, refresh: { .zero })
         try? await Task.sleep(for: .milliseconds(300))
         precondition(steady.statusWindow.reanchored.isEmpty, "empty refresh must not move the pill")
+        // The success pill drops Undo once the draft no longer matches what was written.
+        let watched = Controller()
+        let watchedCore = WriteBackController()
+        await watchedCore.setSucceed(true)
+        watched.pending = watchedCore
+        watched.pendingTarget = .init(pid: 42, bundleID: "fixture.app")
+        watched.apply("replacement", token: 7)
+        for _ in 0..<10000 { if !watched.busy { break }; await Task.yield() }
+        try? await Task.sleep(for: .milliseconds(700))
+        precondition(watched.statusWindow.dropped == 0, "a matching draft keeps Undo")
+        await watchedCore.setMatches(false)
+        try? await Task.sleep(for: .milliseconds(700))
+        precondition(watched.statusWindow.dropped == 1, "an edited or sent draft drops Undo once")
         print("OptimizerControllerTests PASS (8 failed-apply/cancel scenarios, live-rect pills)")
     }
 }

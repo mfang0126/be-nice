@@ -20,6 +20,7 @@ final class OptimizerController {
     // A failed replace may still have written; its Undo must outlive closing the window.
     private var uncertainWrite = false
     private var reanchor: Task<Void, Never>?
+    private var undoWatch: Task<Void, Never>?
 
     init() {
         previewWindow.onRestyle = { [weak self] index, style in self?.regenerate(index, style: style, tweak: nil) }
@@ -167,6 +168,7 @@ final class OptimizerController {
                 shown = nil  // holds the client and token
                 previewWindow.dismiss()
                 showStatus("Replaced", anchor: target.liveAnchorRect, refresh: { target.liveAnchorRect })
+                watchUndo(core)
             case .failed(let error):
                 uncertainWrite = recovery === core
                 previewWindow.resumeCopyOnly(reason: error.message)
@@ -243,6 +245,23 @@ final class OptimizerController {
         pending = nil
         shown = nil
         showStatus(message, anchor: pendingTarget?.anchorRect ?? .zero)
+    }
+
+    /// While the "Replaced" pill is up, drop its Undo once the draft is edited or sent:
+    /// undo would refuse then anyway. The menu's Undo Last Replace still re-checks on its own.
+    private func watchUndo(_ core: WriteBackController) {
+        undoWatch?.cancel()
+        undoWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let self, !Task.isCancelled, self.recovery === core, !self.busy,
+                      self.statusWindow.isVisible, self.statusWindow.buttonTitles.contains("Undo") else { return }
+                if await core.undoStillMatches { continue }
+                guard !Task.isCancelled, self.recovery === core, !self.busy else { return }
+                self.statusWindow.dropUndo()
+                return
+            }
+        }
     }
 
     /// `refresh` re-reads the composer shortly after: Slack can resize it a frame after the text changes.
