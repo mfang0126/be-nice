@@ -473,6 +473,17 @@ struct SettingsTests {
         expect(steadyField("Settings status")?.stringValue.isEmpty == false && oneLine == steadyHeight && twoLine == steadyHeight,
                "window height stays \(steadyHeight): \(oneLine), \(twoLine)")
 
+        // P2 #11: the button says it restores styles only and sits on the styles header row.
+        let (restoreWindow, restoreField, restoreButtons) = customWindow()
+        let restore = restoreButtons.first { $0.title == "Restore default styles" }
+        let header = views(restoreWindow.contentView!).compactMap { $0 as? NSTextField }
+            .first { $0.stringValue == "Your three styles" }
+        expect(restore != nil && restore?.superview === header?.superview, "Restore default styles sits beside the styles header")
+        restore?.performClick(nil)
+        expect(restoreField("Style 1 (default) name")?.stringValue == RewriteStyle.defaultSlots[0].name
+               && restoreField("Base URL")?.stringValue == "https://api.example.com"
+               && restoreField("API key")?.stringValue == "k", "restore resets styles only")
+
         if failures == 0 {
             print("SELFTEST PASS")
             exit(0)

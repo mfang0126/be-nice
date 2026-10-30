@@ -319,7 +319,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let styleInstructionFields = (0..<3).map { _ in NSTextField() }
     /// Pull-down per row: picking a preset fills that row's two fields, nothing more.
     private let presetMenus = (0..<3).map { _ in NSPopUpButton(frame: .zero, pullsDown: true) }
-    private let restoreButton = NSButton(title: "Restore defaults", target: nil, action: nil)
+    private let restoreButton = NSButton(title: "Restore default styles", target: nil, action: nil)
 
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
 
@@ -504,7 +504,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         restoreButton.target = self
         restoreButton.action = #selector(restoreDefaults)
         restoreButton.bezelStyle = .rounded
-        restoreButton.setAccessibilityLabel("Restore defaults")
+        restoreButton.setAccessibilityLabel("Restore default styles")
+        // Beside the styles header, so it reads as styles-only (the model and API key are never touched).
+        let stylesHeaderRow = NSStackView(views: [stylesHeader, NSView(), restoreButton])
+        stylesHeaderRow.orientation = .horizontal
+        stylesHeaderRow.widthAnchor.constraint(equalToConstant: Self.contentWidth).isActive = true
 
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         statusLabel.textColor = .secondaryLabelColor
@@ -527,12 +531,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         buttons.insertArrangedSubview(pushRight, at: 0)  // Close, Test and Save sit at the right, Save last
 
         let stack = NSStackView(views: [
-            providerControl, copilotPane, customPane, stylesHeader, stylesGrid, restoreButton, statusLabel, buttons,
+            providerControl, copilotPane, customPane, stylesHeaderRow, stylesGrid, statusLabel, buttons,
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
-        stack.setCustomSpacing(8, after: stylesHeader)
+        stack.setCustomSpacing(8, after: stylesHeaderRow)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let content = NSView()
@@ -551,9 +555,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             field.delegate = self
         }
         window.initialFirstResponder = providerControl
-        let order: [NSView] = [providerControl, copilotModelPopup, baseURLField, modelField, apiKeyField]
+        let order: [NSView] = [providerControl, copilotModelPopup, baseURLField, modelField, apiKeyField, restoreButton]
             + (0..<3).flatMap { [styleNameFields[$0], styleInstructionFields[$0], presetMenus[$0]] }
-            + [restoreButton, closeButton, testButton, saveButton]
+            + [closeButton, testButton, saveButton]
         for (view, next) in zip(order, order.dropFirst() + [order[0]]) { view.nextKeyView = next }
     }
 
@@ -717,7 +721,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func restoreDefaults() {
         fill(RewriteStyle.defaultSlots)
-        show("Defaults restored. Save to keep them.", isError: false)
+        show("Default styles restored. Save to keep them.", isError: false)
     }
 
     // MARK: Load / save
